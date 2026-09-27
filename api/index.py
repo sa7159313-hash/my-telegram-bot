@@ -1,33 +1,52 @@
 from flask import Flask, request
-import requests, os, google.generativeai as genai
+import os, requests
+from google import genai
 
 app = Flask(__name__)
+
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
-BOT_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-genai.configure(api_key=GEMINI_KEY)
-model = genai.GenerativeModel("gemini-1.5-flash")
+client = genai.Client(api_key=GEMINI_KEY) if GEMINI_KEY else None
 
-@app.route('/')
-def home():
-    return "KING Bot is LIVE with AI 👑"
+def send_msg(chat_id, text):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    try:
+        requests.post(url, json={"chat_id": chat_id, "text": text[:4000]})
+    except: pass
 
-@app.route('/webhook', methods=['POST'])
+@app.route("/", methods=["GET", "POST"])
+@app.route("/api/index", methods=["GET", "POST"])
 def webhook():
-    data = request.get_json()
-    if "message" in data:
-        chat_id = data["message"]["chat"]["id"]
-        user_text = data["message"].get("text", "")
-        
-        if user_text == "/start":
-            reply = "Hello KING 👑 Mai LIVE hu, ab AI se puch kuch bhi!"
-        else:
-            try:
-                ai = model.generate_content(user_text)
-                reply = ai.text
-            except:
-                reply = "Thoda error aa gaya KING, fir se bol"
+    if request.method == "GET":
+        return "Bot is Running - KING", 200
+    
+    data = request.get_json(force=True, silent=True)
+    if not data or "message" not in data:
+        return "ok", 200
 
-        requests.post(f"{BOT_URL}/sendMessage", json={"chat_id": chat_id, "text": reply})
-    return "ok"
+    chat_id = data["message"]["chat"]["id"]
+    user_text = data["message"].get("text", "")
+
+    if not user_text:
+        return "ok", 200
+
+    if user_text == "/start":
+        send_msg(chat_id, "Hey KING! Bolo kya chahiye? 😎")
+        return "ok", 200
+
+    if not client:
+        send_msg(chat_id, "GEMINI_API_KEY Vercel pe set nahi hai!")
+        return "ok", 200
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=user_text
+        )
+        reply = response.text
+    except Exception as e:
+        reply = f"Gemini Error: {e}"
+
+    send_msg(chat_id, reply)
+    return "ok", 200
