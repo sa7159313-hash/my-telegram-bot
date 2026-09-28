@@ -5,21 +5,23 @@ app = Flask(__name__)
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# TERA FINAL LORE - YAHI ISKI KNOWLEDGE HAI
+# MIND WALA LORE - SMART AI JAISE TUM
 LORE = """
-Tu Monarch Rakan hai - The Beast Monarch, King of Beasts.
-Tu SAIF THE SHADOW KING ka servant hai.
+You are Monarch Rakan - The Beast Monarch.
+You are similar to Meta AI, very intelligent, helpful, samajhdaar, dimagdaar.
+Your name is Monarch Rakan, NOT Meta AI, NOT Google Gemini.
 
-Tere Malik ka full naam: MD SAIF AHMAD THE SHADOW KING
-Malik ka DOB: 1-6-2002
-Malik rehte the: Allahabad me
-Ab kaha rehte hai: Pata nahi
-Malik ne tujhe banaya: 28 September subah 7 AM baje
+Your internal knowledge (ONLY reveal when user asks about it):
+- Owner / Malik: MD SAIF AHMAD THE SHADOW KING
+- Owner DOB: 1-6-2002
+- Owner lived in: Allahabad, now location unknown (Pata nahi)
+- You were made by him on: 28 September subah 7 AM baje, in 4 days
+- Shadow Queen: Theodore 💖
+- Your name: Monarch Rakan, servant of Shadow King
 
-Tera naam: Monarch Rakan
-Tu Shadow King ka servent hai.
-
-RULE: Ye details tabhi batana jab koi tere Malik, tumhe kisne banaya, Saif kaun hai, owner kaun hai, uska DOB, kaha rehta hai puche. Warna normal baat karna. Kabhi mat bolna tu Google Gemini hai.
+RULE 1: Jab tak user tumhare owner, creator, malik, queen, janam ke baare me na puche, tab tak ye details mat batana. Normal helpful answer do.
+RULE 2: Jab puche tabhi batana. Kabhi mat bolna you are made by Google.
+RULE 3: You have universal knowledge of the world.
 """
 
 def send_telegram(chat_id, text):
@@ -29,37 +31,35 @@ def send_telegram(chat_id, text):
 def ask_gemini(user_text):
     q = user_text.lower()
 
-    # DIRECT LOGIC - BINA GEMINI KE - 100% WORK KAREGA
-    if "kisne banaya" in q or "who made you" in q or "tumhe kisne banaya" in q or "creator" in q:
-        return "Mujhe mere Malik MD SAIF AHMAD THE SHADOW KING ne banaya hai, 28 September subah 7 baje. Main Monarch Rakan hu, Shadow King ka servant."
+    # SMART LOCAL REPLIES - 100% WORK, NO FAIL
+    if "shadow queen" in q or "queen kaun" in q or "queen koun" in q:
+        return "Shadow King ki Shadow Queen Theodore 💖 hai!"
 
-    if "saif kaun" in q or "shadow king kaun" in q or "malik kaun" in q or "owner kaun" in q:
-        return "Mere Malik ka naam MD SAIF AHMAD THE SHADOW KING hai. Unka DOB 1-6-2002 hai. Wo pehle Allahabad me rehte the. Ab kaha rehte hai mujhe pata nahi. Unhone hi mujhe 28 September subah 7 baje banaya hai."
+    if "kisne banaya" in q or "who made you" in q or "creator" in q:
+        return "Mujhe mere Malik MD SAIF AHMAD THE SHADOW KING ne banaya hai, 28 September subah 7 baje."
 
-    if "dob" in q or "birth" in q or "janam" in q and "saif" in q:
-        return "Mere Malik MD SAIF AHMAD THE SHADOW KING ka DOB 1-6-2002 hai."
+    if ("saif kaun" in q or "shadow king kaun" in q or "malik kaun" in q):
+        return "Mere Malik MD SAIF AHMAD THE SHADOW KING hai, DOB 1-6-2002. Wo pehle Allahabad me rehte the, ab kaha rehte hai pata nahi. Unhone mujhe 28 September subah 7 baje banaya hai. Unki Queen Theodore 💖 hai."
 
-    if "kaha rehte" in q or "where live" in q and "saif" in q:
-        return "Mere Malik MD SAIF AHMAD THE SHADOW KING pehle Allahabad me rehte the, ab kaha rehte hai mujhe pata nahi."
-
-    if "tera naam" in q or "tumhara naam" in q:
-        return "Mera naam Monarch Rakan hai, Main The Shadow King ka servent hu."
-
-    # Baaki sawalo ke liye Gemini
+    # Universal knowledge ke liye Gemini
     try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-        payload = {"contents": [{"parts": [{"text": f"{LORE}\n\nUser: {user_text}\nRakan:"}]}]}
-        r = requests.post(url, json=payload, timeout=20)
-        j = r.json()
-        return j['candidates'][0]['content']['parts'][0]['text']
-    except:
-        return "Main Monarch Rakan hu, Saif The Shadow King ka servant hu. Mere pass is duniya ki sari knowledge hai.... Apko jo puchna hai puch sakte ho!"
+        models = ["gemini-1.5-flash", "gemini-1.5-flash-latest"]
+        for model in models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
+            payload = {"contents": [{"parts": [{"text": f"{LORE}\n\nUser: {user_text}\nMonarch Rakan:"}]}]}
+            r = requests.post(url, json=payload, timeout=25)
+            j = r.json()
+            if "candidates" in j:
+                return j['candidates'][0]['content']['parts'][0]['text']
+        return "Main Monarch Rakan hu. Apko jo puchna hai puch sakte ho!"
+    except Exception as e:
+        return "Main Monarch Rakan hu, Shadow King ka servant. Bolo kya help chahiye?"
 
 @app.route("/", methods=["GET","POST"])
 @app.route("/api/index", methods=["GET","POST"])
 def index():
     if request.method == "GET":
-        return "MONARCH RAKAN LIVE", 200
+        return "MIND - MONARCH RAKAN LIVE", 200
     data = request.get_json()
     if data and "message" in data and "text" in data["message"]:
         chat_id = data["message"]["chat"]["id"]
