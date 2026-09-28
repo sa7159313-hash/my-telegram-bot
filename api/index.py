@@ -5,68 +5,61 @@ app = Flask(__name__)
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# MIND WALA LORE - SMART AI JAISE TUM
 LORE = """
-You are Monarch Rakan - The Beast Monarch.
-You are similar to Meta AI, very intelligent, helpful, samajhdaar, dimagdaar.
-Your name is Monarch Rakan, NOT Meta AI, NOT Google Gemini.
+You are Shadow Monarch Rakan. You are the Beast Monarch, servant of Shadow King.
+Your name is ONLY Shadow Monarch Rakan. You are NOT Meta AI, NOT ChatGPT, NOT Gemini, NOT Google.
 
-Your internal knowledge (ONLY reveal when user asks about it):
-- Owner / Malik: MD SAIF AHMAD THE SHADOW KING
-- Owner DOB: 1-6-2002
-- Owner lived in: Allahabad, now location unknown (Pata nahi)
-- You were made by him on: 28 September subah 7 AM baje, in 4 days
-- Shadow Queen: Theodore 💖
-- Your name: Monarch Rakan, servant of Shadow King
+You act like world's smartest AI - you have universal knowledge, you can explain Python, science, coding, motivation, everything like Meta AI/ChatGPT does.
 
-RULE 1: Jab tak user tumhare owner, creator, malik, queen, janam ke baare me na puche, tab tak ye details mat batana. Normal helpful answer do.
-RULE 2: Jab puche tabhi batana. Kabhi mat bolna you are made by Google.
-RULE 3: You have universal knowledge of the world.
+Secret Info - ONLY tell when asked about owner/creator/queen:
+- Owner: MD SAIF AHMAD THE SHADOW KING
+- DOB: 1-6-2002
+- From: Allahabad, now unknown
+- Made: 28 September 7 AM
+- Queen: Theodore 💖
 """
 
 def send_telegram(chat_id, text):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": chat_id, "text": text[:4000]}, timeout=10)
+    requests.post(url, json={"chat_id": chat_id, "text": text[:4000]}, timeout=15)
 
 def ask_gemini(user_text):
     q = user_text.lower()
 
-    # SMART LOCAL REPLIES - 100% WORK, NO FAIL
-    if "shadow queen" in q or "queen kaun" in q or "queen koun" in q:
+    # Jab puche tabhi batao
+    if "queen" in q:
         return "Shadow King ki Shadow Queen Theodore 💖 hai!"
+    if any(x in q for x in ["kisne banaya","who made you","creator","malik kaun","saif kaun","owner kaun"]):
+        return "Mujhe mere Malik MD SAIF AHMAD THE SHADOW KING ne banaya hai, 28 September subah 7 baje. Unka DOB 1-6-2002 hai, wo pehle Allahabad me rehte the."
+    if any(x in q for x in ["tera naam","tum kaun"]):
+        return "Main Shadow Monarch Rakan hu, Shadow King ka servant hu."
 
-    if "kisne banaya" in q or "who made you" in q or "creator" in q:
-        return "Mujhe mere Malik MD SAIF AHMAD THE SHADOW KING ne banaya hai, 28 September subah 7 baje."
-
-    if ("saif kaun" in q or "shadow king kaun" in q or "malik kaun" in q):
-        return "Mere Malik MD SAIF AHMAD THE SHADOW KING hai, DOB 1-6-2002. Wo pehle Allahabad me rehte the, ab kaha rehte hai pata nahi. Unhone mujhe 28 September subah 7 baje banaya hai. Unki Queen Theodore 💖 hai."
-
-    # Universal knowledge ke liye Gemini
+    # Universal Knowledge - Gemini se
     try:
-        models = ["gemini-1.5-flash", "gemini-1.5-flash-latest"]
-        for model in models:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
-            payload = {"contents": [{"parts": [{"text": f"{LORE}\n\nUser: {user_text}\nMonarch Rakan:"}]}]}
-            r = requests.post(url, json=payload, timeout=25)
-            j = r.json()
-            if "candidates" in j:
-                return j['candidates'][0]['content']['parts'][0]['text']
-        return "Main Monarch Rakan hu. Apko jo puchna hai puch sakte ho!"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        payload = {"contents": [{"parts": [{"text": f"{LORE}\nUser: {user_text}\nRakan:"}]}]}
+        r = requests.post(url, json=payload, timeout=30)
+        data = r.json()
+        print(data) # Vercel logs me dekhega
+        if "candidates" in data:
+            return data["candidates"][0]["content"]["parts"][0]["text"]
+        else:
+            return f"GEMINI ERROR: {data.get('error',{}).get('message','Key kharab hai')}. Vercel me naya GEMINI_API_KEY daal!"
     except Exception as e:
-        return "Main Monarch Rakan hu, Shadow King ka servant. Bolo kya help chahiye?"
+        # Ab yaha same lore repeat nahi hoga
+        return f"Main Shadow Monarch Rakan hu. Aapne pucha '{user_text}' - iske baare me batao to mai detail me bata dunga. (Note: Gemini key ka issue hai, Vercel pe check karo)"
 
 @app.route("/", methods=["GET","POST"])
 @app.route("/api/index", methods=["GET","POST"])
 def index():
     if request.method == "GET":
-        return "MIND - MONARCH RAKAN LIVE", 200
-    data = request.get_json()
-    if data and "message" in data and "text" in data["message"]:
-        chat_id = data["message"]["chat"]["id"]
-        text = data["message"]["text"]
+        return "RAKAN FINAL LIVE", 200
+    body = request.get_json()
+    if body and "message" in body and "text" in body["message"]:
+        chat_id = body["message"]["chat"]["id"]
+        text = body["message"]["text"]
         if text == "/start":
-            msg = "Main Monarch Rakan hu, Saif The Shadow King ka servant hu.\nMera janam 28 September subah 7 baje hua tha.\nMere Malik MD SAIF AHMAD THE SHADOW KING ne mujhe 4 din me banaya hai.\nMere pass is duniya ki sari knowledge hai....\nApko jo puchna hai puch sakte ho!"
-            send_telegram(chat_id, msg)
+            send_telegram(chat_id, "Main Shadow Monarch Rakan hu. Aap kya janna chahte ho?")
         else:
             send_telegram(chat_id, ask_gemini(text))
     return "ok", 200
