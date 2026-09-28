@@ -1,40 +1,37 @@
-import os, requests
+import os
+import requests
+import google.generativeai as genai
 from flask import Flask, request
-import traceback
 
 app = Flask(__name__)
 
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel("gemini-1.5-flash")
+
+def send_telegram(chat_id, text):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    requests.post(url, json={"chat_id": chat_id, "text": text})
+
 @app.route("/api/index", methods=["GET", "POST"])
-@app.route("/webhook", methods=["GET", "POST"])  # dono route ek hi
-def webhook():
+def index():
     if request.method == "GET":
-        return "BOT IS LIVE KING 👑", 200
+        return "KING BOT IS LIVE!", 200
     
-    try:
-        data = request.get_json(force=True)
-        print(f"DATA: {data}")
-
-        BOT_TOKEN = os.environ.get("BOT_TOKEN")
-        print(f"TOKEN EXISTS: {bool(BOT_TOKEN)}")
-
-        if not BOT_TOKEN:
-            print("FATAL: BOT_TOKEN missing in Vercel Env!")
-            return "no token", 200
-
-        if data and "message" in data and "chat" in data["message"]:
-            chat_id = data["message"]["chat"]["id"]
-            text = data["message"].get("text", "")
-            print(f"Message from {chat_id}: {text}")
-
-            url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-            payload = {"chat_id": chat_id, "text": f"KING LIVE HU! Tune bheja: {text} 👑"}
-            r = requests.post(url, json=payload, timeout=10)
-            print(f"TELEGRAM RESP: {r.status_code} {r.text}")
+    data = request.json
+    if "message" in data and "text" in data["message"]:
+        chat_id = data["message"]["chat"]["id"]
+        user_text = data["message"]["text"]
+        
+        if user_text == "/start":
+            send_telegram(chat_id, "Huu KING! 👑 Mai Gemini AI hu, bolo kya help chahiye?")
         else:
-            print("No message field in data")
-
-    except Exception as e:
-        print(f"ERROR CRASH: {e}")
-        traceback.print_exc()
-
+            try:
+                response = model.generate_content(user_text)
+                send_telegram(chat_id, response.text)
+            except Exception as e:
+                send_telegram(chat_id, f"Error aa gaya KING: {str(e)}")
+    
     return "ok", 200
