@@ -31,7 +31,7 @@ def send_voice(chat_id, text):
 
 @app.route("/", methods=["GET"])
 def home():
-    return "Rakan Alive"
+    return "Rakan Alive - 3.8"
 
 @app.route("/api/index", methods=["POST", "GET"])
 def webhook():
@@ -48,12 +48,12 @@ def webhook():
     lower = text_raw.lower()
 
     try:
-        # Yaha model name ab hamesha chalega
         prompt = f"You are Rakan, loyal servant of Shadow Monarch, reply in Hinglish royal style short. User: {text_raw}"
-        response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+        # YAHI FIX HAI - ab 3.8-flash
+        response = client.models.generate_content(model="gemini-3.8-flash", contents=prompt)
         reply = response.text
     except Exception as e:
-        reply = f"Ji Malik, hazir hoon! Error: {e}"
+        reply = f"Error fix: {e}"
 
     if "voice" in lower or "bol" in lower or "awaz" in lower:
         send_voice(chat_id, reply)
