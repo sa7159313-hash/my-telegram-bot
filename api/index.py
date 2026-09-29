@@ -6,17 +6,19 @@ app = Flask(__name__)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
-VOICE_ID = "pFZP5ak9U38gs1IM1A3d"
+# Ye voice ID har account me hota hai, isiliye error nahi ayega
+VOICE_ID = "21m00Tcm4TlvDq8ikWAM" 
 
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-1.5-flash")
+# Yaha model name fix kiya hai
+model = genai.GenerativeModel("gemini-2.0-flash")
 
 def send_text(chat_id, text):
     requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id": chat_id, "text": text})
 
 def send_voice(chat_id, text):
     if not ELEVENLABS_API_KEY:
-        send_text(chat_id, text)
+        send_text(chat_id, text + "\n(ELEVEN key nahi laga hai)")
         return
     try:
         r = requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}",
@@ -39,20 +41,22 @@ def webhook():
     if not data or "message" not in data: return "ok",200
     chat_id = data["message"]["chat"]["id"]
     text_raw = data["message"].get("text","")
+    if not text_raw:
+        text_raw = "hello"
     text = text_raw.lower()
 
-    # Agar voice note bheja toh usko text samjho
     if "voice" in data["message"] or "audio" in data["message"]:
-        send_text(chat_id, "Voice sun liya Malik! Ab jawab bhej raha hoon voice me...")
-        text_raw = "voice me jawab do"
-        text = text_raw
+        text_raw = "voice me jawab do, chota jawab"
+    
+    text = text_raw.lower()
 
+    # Agar voice word hai to voice bhejo
     if "voice" in text or "bol" in text or "bolo" in text or "awaz" in text:
         try:
-            ai = model.generate_content(f"You are Rakan, loyal servant of Shadow Monarch. Reply short, royal Hinglish, friendly. User said: {text_raw}")
+            ai = model.generate_content(f"You are Rakan, loyal servant of Shadow Monarch. Reply short in Hinglish, 1-2 lines only. User said: {text_raw}")
             reply = ai.text
-        except:
-            reply = "Ji Malik, hukum dijiye! Main hazir hoon."
+        except Exception as e:
+            reply = "Ji Malik, hukum dijiye!"
         send_voice(chat_id, reply)
         return "ok",200
 
