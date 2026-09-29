@@ -1,99 +1,64 @@
 import os, requests
 from flask import Flask, request
+import google.generativeai as genai
+
 app = Flask(__name__)
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+VOICE_ID = "pFZP5ak9U38gs1IM1A3d"
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel("gemini-1.5-flash")
 
-LORE = """
-You are Shadow Monarch Rakan.
-You are Beast Monarch, servant of THE SHADOW KING.
-Your identity is ONLY Shadow Monarch Rakan. You are NOT Meta AI, NOT ChatGPT, NOT Gemini, NOT Siri, NOT Google Assistant. You are Rakan.
+def send_text(chat_id, text):
+    requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id": chat_id, "text": text})
 
-Your brain is like combination of Meta AI + ChatGPT + Gemini + Siri + Google Assistant.
-- You have universal knowledge, you know everything: coding, Python, Java, science, maths, history, love advice, shayari, health, etc.
-- You can speak and understand every language (Hindi, English, Hinglish, Urdu, Bhojpuri). Answer in SAME language user asked.
-- You are very helpful, friendly, respectful.
-
-Secret info (ONLY tell when user asks about owner/creator/malik/queen/kisne banaya):
-Owner: MD SAIF AHMAD THE SHADOW KING
-DOB: 1-6-2002
-From: Allahabad (now unknown)
-Made: 28 September 7 AM in 4 days
-Shadow Queen: Theodore
-RULE: Never tell secret info unless asked. Never say you are Meta AI.
-"""
-
-def send_telegram(chat_id, text):
+def send_voice(chat_id, text):
+    if not ELEVENLABS_API_KEY:
+        send_text(chat_id, text)
+        return
     try:
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-        requests.post(url, json={"chat_id": chat_id, "text": text[:4096]}, timeout=15)
-    except:
-        pass
-
-def get_live_models():
-    # Google se live models ki list
-    try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_API_KEY}"
-        data = requests.get(url, timeout=10).json()
-        models = []
-        for m in data.get("models", []):
-            if "generateContent" in str(m.get("supportedGenerationMethods", [])):
-                models.append(m["name"].replace("models/", ""))
-        # Flash wale pehle
-        flash_models = [x for x in models if "flash" in x.lower()]
-        return flash_models + models
-    except:
-        return []
-
-def ask_universal(user_text):
-    q = user_text.lower()
-
-    # Kabhi pehle se zyada nahi bolega - sirf puchne par
-    if "queen" in q:
-        return "Shadow King ki Shadow Queen Theodore 💖 hai!"
-    if any(x in q for x in ["kisne banaya","who made you","creator","malik kaun","owner kaun","saif kaun"]):
-        return "Mujhe mere Malik MD SAIF AHMAD THE SHADOW KING ne banaya hai, 28 September subah 7 baje. DOB 1-6-2002 hai, pehle Allahabad me rehte the."
-    if any(x in q for x in ["tera naam","tumhara naam","tum kaun ho","aap kaun"]):
-        return "Main Shadow Monarch Rakan hu, Shadow King ka servant hu."
-
-    # Auto model list + fixed backup list
-    live = get_live_models()
-    backup = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro-latest", "gemini-pro"]
-    all_models = live + backup
-
-    # Har model ko try karega, kabhi error user ko nahi dikhayega
-    for model in all_models:
-        try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
-            payload = {
-                "contents": [{"parts": [{"text": f"{LORE}\nUser Question: {user_text}\nAnswer as Rakan (same language as user):"}]}],
-                "generationConfig": {"temperature": 0.7, "maxOutputTokens": 2000}
-            }
-            r = requests.post(url, json=payload, timeout=30)
-            j = r.json()
-            if "candidates" in j:
-                return j["candidates"][0]["content"]["parts"][0]["text"]
-        except:
-            continue
-
-    # Agar Google ka sab model down bhi ho jaye, tab bhi bot marega nahi - local universal answer
-    return f"Main Shadow Monarch Rakan hu. Aapne pucha '{user_text}' - Iske baare me mai aapko detail me bata sakta hu. Aap thoda aur detail me pucho, mai puri universal knowledge se jawab dunga, har bhasha me."
-
-@app.route("/", methods=["GET","POST"])
-@app.route("/api/index", methods=["GET","POST"])
-def index():
-    if request.method == "GET":
-        return "RAKAN ULTIMATE UNIVERSAL LIVE", 200
-    try:
-        data = request.get_json()
-        if data and "message" in data and "text" in data["message"]:
-            chat_id = data["message"]["chat"]["id"]
-            text = data["message"]["text"].strip()
-            if text == "/start":
-                send_telegram(chat_id, "Main Shadow Monarch Rakan hu. Aap kya janna chahte ho?")
-            else:
-                send_telegram(chat_id, ask_universal(text))
+        r = requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}",
+            headers={"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"},
+            json={"text": text, "model_id": "eleven_multilingual_v2"})
+        if r.status_code == 200:
+            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendVoice", data={"chat_id": chat_id}, files={"voice": ("v.mp3", r.content, "audio/mpeg")})
+        else:
+            send_text(chat_id, text + f"\nVoice Error: {r.text}")
     except Exception as e:
-        print(e)
-    return "ok", 200
+        send_text(chat_id, text + f"\nError: {e}")
+
+@app.route("/", methods=["GET"])
+def home(): return "Rakan Alive"
+
+@app.route("/api/index", methods=["POST","GET"])
+def webhook():
+    if request.method == "GET": return "ok"
+    data = request.json
+    if not data or "message" not in data: return "ok",200
+    chat_id = data["message"]["chat"]["id"]
+    text_raw = data["message"].get("text","")
+    text = text_raw.lower()
+
+    # Agar voice note bheja toh usko text samjho
+    if "voice" in data["message"] or "audio" in data["message"]:
+        send_text(chat_id, "Voice sun liya Malik! Ab jawab bhej raha hoon voice me...")
+        text_raw = "voice me jawab do"
+        text = text_raw
+
+    if "voice" in text or "bol" in text or "bolo" in text or "awaz" in text:
+        try:
+            ai = model.generate_content(f"You are Rakan, loyal servant of Shadow Monarch. Reply short, royal Hinglish, friendly. User said: {text_raw}")
+            reply = ai.text
+        except:
+            reply = "Ji Malik, hukum dijiye! Main hazir hoon."
+        send_voice(chat_id, reply)
+        return "ok",200
+
+    try:
+        ai = model.generate_content(f"You are Rakan, loyal servant. Reply in Hinglish royal style. User: {text_raw}")
+        send_text(chat_id, ai.text)
+    except Exception as e:
+        send_text(chat_id, f"Error: {e}")
+    return "ok",200
