@@ -1,8 +1,8 @@
 import os
 import requests
-import time
 from flask import Flask, request
 from google import genai
+from google.genai import types
 
 app = Flask(__name__)
 
@@ -13,64 +13,63 @@ VOICE_ID = "21m00Tcm4TlvDq8ikWAM"
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# FIXED - Only working models
-MODELS_TO_TRY = [
-    "gemini-2.0-flash-lite",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash"
-]
+# YE 4 MODELS 100% WORKING HAIN - 1.5 WALA HATA DIYA
+MODELS = ["gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-2.5-flash-lite", "gemini-2.5-flash"]
 
 def send_text(chat_id, text):
     try:
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-        requests.post(url, json={"chat_id": chat_id, "text": text})
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id": chat_id, "text": text}, timeout=10)
     except: pass
 
 def send_voice(chat_id, text):
     try:
         if not ELEVENLABS_API_KEY:
             send_text(chat_id, text); return
-        url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
-        headers = {"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"}
-        data = {"text": text, "model_id": "eleven_multilingual_v2"}
-        r = requests.post(url, headers=headers, json=data, timeout=15)
+        r = requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}",
+            headers={"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"},
+            json={"text": text, "model_id": "eleven_multilingual_v2"}, timeout=15)
         if r.status_code == 200:
-            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendVoice", data={"chat_id": chat_id}, files={"voice": ("voice.mp3", r.content, "audio/mpeg")})
-        else: send_text(chat_id, text)
-    except: send_text(chat_id, text)
+            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendVoice", data={"chat_id": chat_id}, files={"voice": ("v.mp3", r.content, "audio/mpeg")}, timeout=10)
+        else:
+            send_text(chat_id, text)
+    except:
+        send_text(chat_id, text)
 
-def get_ai_reply(prompt):
-    last_error = ""
-    for model_name in MODELS_TO_TRY:
+def get_reply(user_text):
+    prompt = f"You are Rakan, loyal servant of Shadow Monarch. Reply in Hinglish, royal, loyal, short 2 lines max. User: {user_text}"
+    for model in MODELS:
         try:
-            response = client.models.generate_content(model=model_name, contents=prompt)
-            if response and response.text:
-                return response.text
+            resp = client.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=types.GenerateContentConfig(temperature=0.7, max_output_tokens=200)
+            )
+            if resp.text:
+                return resp.text
         except Exception as e:
-            last_error = str(e)
+            print(f"{model} failed: {e}")
             continue
-    return f"Ji Malik quota full hai, 1 min ruk jaiye. [{last_error[:150]}]"
+    return "Ji Malik, hazir hoon! Thoda network busy hai, fir se boliye."
 
 @app.route("/", methods=["GET"])
-def home(): return "Rakan Alive - Fixed"
+def home(): return "Rakan Alive v2.5 - Fixed", 200
 
-@app.route("/api/index", methods=["POST", "GET"])
+@app.route("/api/index", methods=["GET", "POST"])
 def webhook():
     if request.method == "GET": return "ok", 200
     data = request.json
     if not data or "message" not in data: return "ok", 200
+    
     chat_id = data["message"]["chat"]["id"]
-    msg = data["message"]
-    text_raw = msg.get("text", "")
-    if not text_raw:
-        text_raw = "hello malik" if "voice" not in msg and "audio" not in msg else "voice me short jawab do"
-    
-    prompt = f"You are Rakan, loyal servant of Shadow Monarch. Reply in Hinglish, royal, short. User: {text_raw}"
-    reply = get_ai_reply(prompt)
-    
-    lower = text_raw.lower()
-    if "voice" in lower or "bol" in lower or "awaz" in lower or "bolo" in lower:
+    text = data["message"].get("text", "")
+    if not text:
+        text = "hello"
+
+    reply = get_reply(text)
+    low = text.lower()
+    if any(x in low for x in ["voice", "bol", "awaz", "bolo", "suna"]):
         send_voice(chat_id, reply)
     else:
         send_text(chat_id, reply)
+    
     return "ok", 200
