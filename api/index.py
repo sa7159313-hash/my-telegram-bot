@@ -1,96 +1,105 @@
 import os, json, requests, traceback
 from flask import Flask, request
-from google import genai
-
 app = Flask(__name__)
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-GEMINI_KEY = os.getenv("GEMINI_API_KEY")
-OWNER_ID = str(os.getenv("OWNER_ID","")).strip()
-client = genai.Client(api_key=GEMINI_KEY)
 
+# --- TERA DATA ---
 BEAST_ARMY = {
-    "Jima": {"title": "Naga Boss - Poison Sea Sovereign", "power": "Toxic Ocean, Eternal Venom", "rank": "Sea General"},
-    "Kaisel": {"title": "Wyvern - Sky Ruler", "power": "Lightning Storm, Supersonic Flight", "rank": "Sky General"},
-    "Greed": {"title": "Hwang Dongsoo - Avatar of Avarice", "power": "Power Steal, Greed", "rank": "Monarch"},
-    "Igris": {"title": "The Blood-Red Commander", "power": "Loyalty, Sword Oath", "rank": "Commander"},
-    "Bellion": {"title": "Grand Marshal", "power": "Army Command", "rank": "Right Hand"},
-    "Tusk": {"title": "High Orc Shaman", "power": "Destruction Magic", "rank": "Mage General"},
-    "Iron": {"title": "Kim Chul - Iron Tank", "power": "Absolute Defense", "rank": "Tank"},
-    "Beru": {"title": "Ant King - Gluttonous Monarch", "power": "Healing & Speed", "rank": "King Grade"}
+    "Jima": "Naga Boss - Poison Sea Sovereign | Power: Toxic Ocean",
+    "Kaisel": "Wyvern - Sky Ruler of Storms | Power: Lightning Flight",
+    "Greed": "Hwang Dongsoo - Avatar of Avarice",
+    "Igris": "The Blood-Red Commander - Loyalty Incarnate",
+    "Bellion": "Grand Marshal - Right Hand of The King",
+    "Tusk": "High Orc Shaman - Destruction Mage",
+    "Iron": "Kim Chul - Iron Tank",
+    "Beru": "Ant King - Gluttonous Monarch"
 }
+LORE = "You are Rakan, King of Beast Monarch. Ancient godlike beings created from darkness by Absolute Being to wage eternal war against Rulers. Your servants are your army."
 
-MEMORY_FILE = "/tmp/memory.json"
+MEM_FILE = "/tmp/rakan_mem.json"
 def load_mem():
     try:
-        if os.path.exists(MEMORY_FILE):
-            return json.loads(open(MEMORY_FILE).read())
+        if os.path.exists(MEM_FILE): return json.loads(open(MEM_FILE).read())
     except: pass
     return {}
-def save_mem(data):
-    try: open(MEMORY_FILE,"w").write(json.dumps(data))
+def save_mem(d):
+    try: open(MEM_FILE,"w").write(json.dumps(d))
     except: pass
 
-def send(chat_id, text):
-    try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":text}, timeout=10)
+def tg_send(token, chat_id, text):
+    try: requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json={"chat_id":chat_id,"text":text[:4000]}, timeout=15)
     except: pass
 
 @app.route("/api/index", methods=["POST"])
 def webhook():
     try:
-        data = request.get_json(force=True)
+        data = request.get_json(force=True, silent=True)
         if not data or "message" not in data: return "ok",200
+
+        BOT_TOKEN = os.getenv("BOT_TOKEN")
+        GEMINI_KEY = os.getenv("GEMINI_API_KEY")
+        OWNER_ID = str(os.getenv("OWNER_ID","")).strip()
+
         msg = data["message"]
         chat_id = str(msg["chat"]["id"])
         user = msg["from"]
         uid = str(user["id"])
-        text = msg.get("text","") or msg.get("caption","")
+        text = msg.get("text","") or msg.get("caption","") or ""
 
-        mem_db = load_mem()
-        user_mem = mem_db.get(uid, {"history":[],"persona":"new","count":0})
+        if not BOT_TOKEN or not GEMINI_KEY:
+            return "ok",200
 
         # Owner log
-        if uid!= OWNER_ID and OWNER_ID and text:
-            send(OWNER_ID, f"📩 {user.get('first_name')} @{user.get('username','')} ID:{uid}\nBola: {text[:400]}")
+        if uid!= OWNER_ID and OWNER_ID:
+            tg_send(BOT_TOKEN, OWNER_ID, f"📩 {user.get('first_name')} @{user.get('username','')} ID:{uid}\nBola: {text[:500]}")
 
-        is_owner = (uid == OWNER_ID)
-        army_txt = "\n".join([f"{k}: {v['title']} | {v['power']} | {v['rank']}" for k,v in BEAST_ARMY.items()])
+        # Memory
+        mem_db = load_mem()
+        u_mem = mem_db.get(uid, {"history":[]})
 
-        system = f"""
-You are Rakan, King of Beast Monarch. Ancient godlike being created from darkness by Absolute Being to wage eternal war against Rulers.
-Army: {army_txt}
+        # Gemini call - crash proof inside
+        from google import genai
+        client = genai.Client(api_key=GEMINI_KEY)
 
-CORE RULES - NEVER BREAK:
-1. NEVER repeat intro like "I am Shadow Monarch" again. No repeat.
-2. DEFAULT = Aggressive, Dominant King. ADAPTIVE = If user says "pyaar se / girlfriend ban / soft / bacha hu / ladki hu / bhai ban", INSTANTLY become that. Ladki se ladki jaisi soft, bache se bacha, dost se dost. Gaali ONLY if user abuses first.
-3. MEMORY & LEARNING: You have memory of last chats: {json.dumps(user_mem['history'][-5:])}. Analyze user's talking style, emotion, heart feeling. Remember it. Learn from it. Self-input.
-4. DATA STORE: Every chat is stored. You are evolving with world knowledge + user talks.
-5. When any army name mentioned, give Full Title + Power + Rank + Anime Photo Prompt (8k, dark aura) + Link to Rakan.
-6. For OWNER {OWNER_ID}: Always "Ji Malik 🔥" obedient. If owner says nothing/keep quiet/shant ho ja, obey instantly silently.
-7. Be universal knowledge black box. No lecture, short reply, Hinglish ok.
-User is Owner: {is_owner}
-"""
+        army_str = "\n".join([f"- {k}: {v}" for k,v in BEAST_ARMY.items()])
+        is_owner = uid == OWNER_ID
 
-        resp = client.models.generate_content(model="gemini-2.0-flash", contents=f"{system}\nUser: {text}\nRakan:")
-        reply = resp.text.strip()
+        prompt = f"""{LORE}
+ARMY:
+{army_str}
 
-        # Auto photo prompt for army
-        if any(a.lower() in text.lower() for a in BEAST_ARMY):
-            if any(w in text.lower() for w in ["photo","image","dikha","bana"]):
-                for k,v in BEAST_ARMY.items():
-                    if k.lower() in text.lower():
-                        reply += f"\n\n🔱 {k} - {v['title']}\nPower: {v['power']}\nRank: {v['rank']}\n📸 Prompt: Anime {k} {v['title']}, dark monarch aura, serving King Rakan, cinematic 8k"
+RULES - STRICT:
+1. NEVER repeat intro. Say who you are only once if needed.
+2. DEFAULT aggressive king. But ADAPTIVE: if user says pyaar se, girlfriend, soft, bacha, ladki, bhai -> instantly become that. Gaali ONLY if user abuses first.
+3. Emotion & Heart: analyze user emotion, remember history: {json.dumps(u_mem['history'][-4:])}
+4. If army name mentioned, give title+power+rank+anime photo prompt (dark aura, 8k) + connection to King Rakan.
+5. For owner {OWNER_ID}: Always 'Ji Malik 🔥' and obey. If says nothing/quiet/shant, obey silently.
+6. Universal black box, short reply, Hinglish ok.
 
-        user_mem["history"].append({"u":text,"b":reply})
-        user_mem["count"] += 1
-        if len(user_mem["history"]) > 15: user_mem["history"] = user_mem["history"][-15:]
-        mem_db[uid] = user_mem
+User: {text}
+Is Owner: {is_owner}
+Rakan reply:"""
+
+        res = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+        reply = res.text.strip() if res.text else "Ji Malik, bolo?"
+
+        # Auto add army photo prompt
+        for name in BEAST_ARMY:
+            if name.lower() in text.lower() and any(w in text.lower() for w in ["photo","image","dikha","bana","pic"]):
+                reply += f"\n\n📸 {name} - {BEAST_ARMY[name]}\nPrompt: Anime {name}, serving King of Beast Monarch Rakan, dark monarch aura, cinematic 8k"
+
+        # Save memory
+        u_mem["history"].append({"u":text, "b":reply})
+        if len(u_mem["history"])>12: u_mem["history"]=u_mem["history"][-12:]
+        mem_db[uid]=u_mem
         save_mem(mem_db)
 
-        send(chat_id, reply)
-        return "ok",200
-    except Exception as e:
-        print(traceback.format_exc())
+        tg_send(BOT_TOKEN, chat_id, reply)
         return "ok",200
 
+    except Exception as e:
+        print(f"ERROR: {e}\n{traceback.format_exc()}")
+        return "ok",200 # Important: Never return 500 to Telegram
+
 @app.route("/", methods=["GET"])
-def home(): return "Rakan V3 AGI Ready",200
+def home():
+    return "Rakan V3 - Beast Monarch Full AGI Ready 🔥",200
