@@ -1,4 +1,4 @@
 Flask
 requests
-google-generativeai
+google-genai
 Pillow
