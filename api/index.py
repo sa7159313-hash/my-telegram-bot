@@ -1,6 +1,5 @@
 import os
 import requests
-import base64
 from flask import Flask, request, jsonify
 from google import genai
 from PIL import Image
@@ -13,10 +12,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 client = genai.Client(api_key=GEMINI_API_KEY)
-
-# Duplicate fix - 4x reply wala bug khatam
 processed_updates = set()
-
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 RAKAN_PROMPT = """
@@ -53,19 +49,24 @@ def get_gemini_reply(prompt, image_bytes=None):
                 model="gemini-2.0-flash",
                 contents=RAKAN_PROMPT + f"\nUser: {prompt}"
             )
+        if not response.text:
+            print(f"Gemini blocked: {response}")
+            return "KING ye wala kaam mai nahi karta 👑 Koi aur sawal bhej!"
         return response.text
     except Exception as e:
         print(f"Gemini fail: {e}")
-        # Groq fallback
         try:
             if GROQ_API_KEY:
                 res = requests.post(
                     "https://api.groq.com/openai/v1/chat/completions",
                     headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-                    json={"model": "llama-3.1-8b-instant", "messages": [{"role": "system", "content": RAKAN_PROMPT}, {"role": "user", "content": prompt}]},
+                    json={"model": "llama-3.3-70b-versatile", "messages": [{"role": "system", "content": RAKAN_PROMPT}, {"role": "user", "content": prompt}]},
                     timeout=15
                 )
+                print(f"Groq raw: {res.text[:300]}")
                 return res.json()["choices"][0]["message"]["content"]
+            else:
+                print("GROQ_API_KEY missing")
         except Exception as ge:
             print(f"Groq fail: {ge}")
         return "Arre KING thoda server down hai 👑 ek baar fir bhej de!"
@@ -78,32 +79,24 @@ def home():
 def webhook():
     if request.method == "GET":
         return "Rakan Running", 200
-
     data = request.get_json()
     if not data:
         return jsonify(ok=True), 200
-
     update_id = data.get("update_id")
     if update_id in processed_updates:
         return jsonify(ok=True), 200
     processed_updates.add(update_id)
     if len(processed_updates) > 200:
         processed_updates.clear()
-
     msg = data.get("message", {})
     chat_id = msg.get("chat", {}).get("id")
     text = msg.get("text", "")
     photo = msg.get("photo")
-    voice = msg.get("voice")
-
     if not chat_id:
         return jsonify(ok=True), 200
-
     if text == "/start":
         send_message(chat_id, "Main The Beast King Monarch Rakan hu KING 👑🔥\nBolo kya kaam hai? Photo bhej, Voice bhej, sab samjhunga!")
         return jsonify(ok=True), 200
-
-    # Photo handling
     if photo:
         try:
             file_id = photo[-1]["file_id"]
@@ -115,10 +108,7 @@ def webhook():
             return jsonify(ok=True), 200
         except Exception as e:
             print(f"Photo fail: {e}")
-
-    # Normal text
     if text:
         reply = get_gemini_reply(text)
         send_message(chat_id, reply)
-
     return jsonify(ok=True), 200
