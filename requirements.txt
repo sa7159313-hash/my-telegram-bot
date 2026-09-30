@@ -1,3 +1,2 @@
-Flask==3.0.3
-requests==2.32.3
-google-genai==0.3.0
+Flask
+requests
