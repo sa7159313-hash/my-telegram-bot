@@ -1,36 +1,3 @@
-def get_ai_reply(prompt):
-    # Groq ke saare purane working models
-    MODELS = ["llama3-8b-8192", "llama3-70b-8192", "gemma2-9b-it", "mixtral-8x7b-32768"]
-
-    for model_name in MODELS:
-        try:
-            if GROQ_KEY:
-                url = "https://api.groq.com/openai/v1/chat/completions"
-                headers = {"Authorization": f"Bearer {GROQ_KEY}", "Content-Type": "application/json"}
-                data = {
-                    "model": model_name,
-                    "messages": [{"role": "user", "content": prompt}]
-                }
-                r = requests.post(url, headers=headers, json=data, timeout=20)
-                if r.status_code == 200:
-                    print(f"Success with {model_name}")
-                    return r.json()['choices'][0]['message']['content']
-                else:
-                    print(f"Groq {model_name} Error {r.status_code}: {r.text}")
-        except Exception as e:
-            print(f"Groq {model_name} fail: {e}")
-
-    # Agar Groq ke saare models fail to Gemini
-    try:
-        if GEMINI_KEY:
-            from google import genai
-            client = genai.Client(api_key=GEMINI_KEY)
-            res = client.models.generate_content(model="gemini-1.5-flash", contents=prompt)
-            return res.text
-    except Exception as e:
-        print(f"Gemini fail: {e}")
-
-    return "Malik, Groq aur Gemini dono fail ho gaye. Key check karo."
 from flask import Flask, request
 import os, requests
 app = Flask(__name__)
@@ -40,37 +7,35 @@ GROQ_KEY = os.getenv("GROQ_API_KEY")
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 
 def get_reply(p):
-    # 1. Groq - sabse pehle
+    # NEW GROQ MODELS - 2026
     try:
         if GROQ_KEY:
-            for m in ["llama3-8b-8192", "llama-3.3-70b-versatile", "gemma2-9b-it"]:
+            for m in ["openai/gpt-oss-20b", "openai/gpt-oss-120b", "llama-3.1-8b-instant"]:
                 r = requests.post("https://api.groq.com/openai/v1/chat/completions",
                     headers={"Authorization": f"Bearer {GROQ_KEY}", "Content-Type":"application/json"},
-                    json={"model": m, "messages":[{"role":"user","content":p}]}, timeout=15)
+                    json={"model": m, "messages":[{"role":"user","content":p}]}, timeout=20)
                 if r.status_code == 200:
                     return r.json()['choices'][0]['message']['content']
-                else:
-                    print(f"Groq {m} {r.text}")
+                print(f"Groq {m} failed: {r.text}")
     except Exception as e:
-        print(e)
+        print(f"Groq error {e}")
 
-    # 2. Gemini - NEW MODEL
+    # GEMINI NEW MODEL
     try:
         if GEMINI_KEY:
             from google import genai
             c = genai.Client(api_key=GEMINI_KEY)
-            # Yahi fix hai
             res = c.models.generate_content(model="gemini-2.0-flash", contents=p)
             return res.text
     except Exception as e:
-        return f"Gemini Error: {e}"
-    return "Key missing"
+        return f"Error: {e}"
+    return "Keys missing"
 
 @app.route('/', methods=['GET','POST'])
 @app.route('/api/index', methods=['GET','POST'])
 def home():
     if request.method=='GET':
-        return "Bot Ready ✅", 200
+        return "Bot Ready ✅ New Models", 200
     data = request.get_json(silent=True)
     if not data or 'message' not in data:
         return "ok", 200
