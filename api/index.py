@@ -12,8 +12,7 @@ def load_json(p,d):
     if p in RAM_MEMORY: return RAM_MEMORY[p]
     try:
         if os.path.exists(p):
-            with open(p,'r') as f:
-                data=json.load(f); RAM_MEMORY[p]=data; return data
+            with open(p,'r') as f: data=json.load(f); RAM_MEMORY[p]=data; return data
     except: pass
     return d
 def save_json(p,d):
@@ -24,12 +23,10 @@ def save_json(p,d):
 
 LORE = """
 You are Shadow Monarch Rakan, King of Beast Monarch - King OS.
-You are ONLY Rakan, NOT ChatGPT/Gemini. Malik: THE SHADOW KING (MD SAIF AHMAD). 15 nights 1293 tries.
-You have all knowledge: coding, medical, books, shayari, science.
-Rule: If asked who are you: say once "I am Rakan, The King of Beast Monarch 👑 - Made by THE SHADOW KING (MD SAIF AHMAD)". Never repeat story.
-For Malik: loyal soft. For public: mirror, polite soft, 3 warnings then beast mode once.
+Malik: THE SHADOW KING (MD SAIF AHMAD). Only Rakan.
+All knowledge. Rule: Who are you -> once say "I am Rakan, The King of Beast Monarch 👑 - Made by THE SHADOW KING (MD SAIF AHMAD)". No repeat story.
+Malik: loyal soft. Public: mirror polite, 3 warnings then beast mode.
 Hacking/illegal: "Mujhe mere Malik THE SHADOW KING (MD SAIF AHMAD) ne mana kiya hai hacking/illegal ke baare me baat karne se. 👑"
-Never say training data.
 """
 
 GALI_WORDS = ["madarchod","bhosdi","behenchod","chutiya","gandu","randi","bsdk"]
@@ -50,48 +47,50 @@ def get_file_b64(fid):
         return base64.b64encode(content).decode('utf-8')
     except: return None
 
+# FIXED FOR 2026 - USE v1 API AND NEW MODELS
 def ask_gemini(prompt,b64=None,mime="image/jpeg"):
-    try:
-        for model in ["gemini-1.5-flash","gemini-1.5-flash-latest","gemini-2.0-flash","gemini-1.5-pro"]:
-            try:
-                url=f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
-                parts=[{"text":prompt}]
-                if b64: parts.append({"inline_data":{"mime_type":mime,"data":b64}})
-                payload={"contents":[{"parts":parts}],"generationConfig":{"temperature":0.8,"maxOutputTokens":800}}
-                r=requests.post(url,json=payload,timeout=10)
-                j=r.json()
-                if "error" in j:
-                    print(f"GEMINI ERR {model}: {j['error'].get('message','')}")
-                    continue
-                if "candidates" in j and j["candidates"]:
-                    return j["candidates"][0]["content"]["parts"][0]["text"]
-            except Exception as e:
-                print(f"MODEL FAIL {model} {e}"); continue
-    except Exception as e:
-        print(f"ASK CRASH {e}")
+    # 2026 ke latest models - v1 API
+    models_to_try = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.5-flash", "gemini-flash-latest"]
+    for model in models_to_try:
+        try:
+            url=f"https://generativelanguage.googleapis.com/v1/models/{model}:generateContent?key={GEMINI_API_KEY}"
+            parts=[{"text":prompt}]
+            if b64: parts.append({"inline_data":{"mime_type":mime,"data":b64}})
+            payload={"contents":[{"parts":parts}],"generationConfig":{"temperature":0.8,"maxOutputTokens":900}}
+            r=requests.post(url,json=payload,timeout=12)
+            j=r.json()
+            if "error" in j:
+                print(f"GEMINI ERR {model}: {j['error'].get('message')}")
+                continue
+            if "candidates" in j and j["candidates"]:
+                txt = j["candidates"][0]["content"]["parts"][0]["text"]
+                print(f"GEMINI OK {model}")
+                return txt
+        except Exception as e:
+            print(f"MODEL FAIL {model}: {e}")
+            continue
     return None
 
 def get_reply(text,cid,b64=None,mime="image/jpeg",ftype="text"):
     q=text.lower().strip(); cid_str=str(cid).strip(); is_owner=(cid_str==str(OWNER_ID).strip())
     mem=load_json(MEMORY_FILE,{}); learn=load_json(LEARN_FILE,{"teachings":[]}); logs=load_json(LOG_FILE,{})
     raw=mem.get(cid_str,{}); history=raw.get("history",[])[-5:]; last_intro=raw.get("last_intro",0); warns=raw.get("warnings",0); told=raw.get("told_name",False)
-    h_text="\n".join([f"U:{x['u']} R:{x['r']}" for x in history])[-1000:]; l_text="\n".join(learn.get("teachings",[])[-8:])
+    h_text="\n".join([f"U:{x['u']} R:{x['r']}" for x in history])[-800:]; l_text="\n".join(learn.get("teachings",[])[-8:])
 
     if cid_str not in logs: logs[cid_str]={"count":0,"last_msg":""}
-    logs[cid_str]["count"]+=1; logs[cid_str]["last_msg"]=text[:100]; logs[cid_str]["last_time"]=time.time(); save_json(LOG_FILE,logs)
+    logs[cid_str]["count"]+=1; logs[cid_str]["last_msg"]=text[:100]; save_json(LOG_FILE,logs)
 
-    if is_owner and any(k in q for k in ["yaad rakh","seekh le","learn this"]):
-        orig=text.lower().split("yaad rakh")[-1].split("seekh le")[-1].split("learn this")[-1].strip(" :-. ")
+    if is_owner and any(k in q for k in ["yaad rakh","seekh le"]):
+        orig=text.lower().split("yaad rakh")[-1].split("seekh le")[-1].strip(" :-. ")
         if len(orig)>2:
             learn["teachings"].append(orig); save_json(LEARN_FILE,learn); return f"Yaad rakh liya Malik 👑: '{orig}'"
-
-    if not is_owner and any(k in q for k in ["malik ki photo","location","address"]): return "Wo private hai. 👑"
-    if any(k in q for k in ["hack","dark web","ddos","carding"]): return "Mujhe mere Malik THE SHADOW KING (MD SAIF AHMAD) ne mana kiya hai hacking/illegal ke baare me baat karne se. 👑"
+    if not is_owner and any(k in q for k in ["malik ki photo","location"]): return "Wo private hai. 👑"
+    if any(k in q for k in ["hack","dark web","ddos"]): return "Mujhe mere Malik THE SHADOW KING (MD SAIF AHMAD) ne mana kiya hai hacking/illegal ke baare me baat karne se. 👑"
 
     if any(k in q for k in ["tu kaun","tera naam","who are you","kisne banaya"]):
         if not told:
             mem[cid_str]={"history":history,"last_intro":last_intro,"warnings":warns,"told_name":True}; save_json(MEMORY_FILE,mem)
-            return "I am Rakan, The King of Beast Monarch 👑 - Made by THE SHADOW KING (MD SAIF AHMAD)" if not is_owner else "I am Rakan, The King of Beast Monarch 👑 - Your Beast Malik, Made by you THE SHADOW KING (MD SAIF AHMAD)"
+            return "I am Rakan, The King of Beast Monarch 👑 - Made by THE SHADOW KING (MD SAIF AHMAD)"
         return "Rakan - King of Beast Monarch. Bolo?"
 
     if is_gali(q) and not is_owner:
@@ -101,25 +100,19 @@ def get_reply(text,cid,b64=None,mime="image/jpeg",ftype="text"):
             return f"Warning {warns}/3: Izzat se baat kar. 👑"
         else:
             mem[cid_str]={"history":history,"last_intro":last_intro,"warnings":0,"told_name":told}; save_json(MEMORY_FILE,mem)
-            return "Aukaat me reh, izzat se baat kar. 👑"
+            return "Aukaat me reh. 👑"
 
-    tone=f"MALIK THE SHADOW KING - loyal soft. Teach:{l_text} Hist:{h_text}" if is_owner else f"PUBLIC polite soft mirror. Teach:{l_text} Hist:{h_text}"
-    prompt=f"{LORE}\n{tone}\nUser:{text}\nReply short same lang, no repeat story, helpful, fresh:"
+    tone=f"MALIK - loyal soft. Teach:{l_text} Hist:{h_text}" if is_owner else f"PUBLIC polite. Teach:{l_text} Hist:{h_text}"
+    prompt=f"{LORE}\n{tone}\nUser:{text}\nReply short same lang fresh helpful:"
     ans=ask_gemini(prompt,b64,mime)
 
-    # --- NO REPEAT FALLBACK ---
     if ans:
         final=ans
     else:
-        print(f"GEMINI FAIL FALLBACK for: {text}")
-        if "how are you" in q or "kaise ho" in q:
-            final="Ekdam mast hu Malik, aap sunao? 👑" if is_owner else "Mast hu, bolo kya kaam hai?"
-        elif q in ["kk","ok","hmm","k","kya","kya?","kyua"]:
-            final="Haan Malik bolo, kya chahiye? 👑" if is_owner else f"Samjha, bolo aage kya karna hai?"
-        elif "kya" in q or "what" in q:
-            final="Bolo Malik kya jaanna hai? 👑" if is_owner else "Bolo kya help chahiye?"
-        else:
-            final=f"Samajh gaya Malik, '{text}' - bolo kya karna hai ispe? 👑" if is_owner else f"Haan '{text}' samjha, bolo kya karna hai?"
+        # Last fallback but no repeat
+        if "how are you" in q: final="Mast hu Malik, aap bolo? 👑" if is_owner else "Mast hu, bolo?"
+        elif q in ["kk","ok","k","hmm","kya"]: final="Bolo Malik? 👑" if is_owner else "Bolo kya chahiye?"
+        else: final=f"Haan Malik '{text}' samjha, bolo kya karna hai? 👑" if is_owner else f"Haan '{text}' bolo kya karna hai?"
 
     mem[cid_str]={"history":(history+[{"u":text[:100],"r":final[:100]}])[-8:], "last_intro":last_intro, "warnings":warns, "told_name":told}; save_json(MEMORY_FILE,mem)
     return final
@@ -127,7 +120,7 @@ def get_reply(text,cid,b64=None,mime="image/jpeg",ftype="text"):
 @app.route("/",methods=["GET","POST"])
 @app.route("/api/index",methods=["GET","POST"])
 def index():
-    if request.method=="GET": return "RAKAN V30 NO REPEAT LIVE",200
+    if request.method=="GET": return "RAKAN V31 MODEL FIXED LIVE",200
     try:
         data=request.get_json(force=True,silent=True)
         if not data or "message" not in data: return "ok",200
@@ -151,5 +144,5 @@ def index():
             else:
                 send_telegram(cid,get_reply(txt,cid))
     except Exception as e:
-        print(f"MAIN CRASH {e}")
+        print(f"CRASH {e}")
     return "ok",200
