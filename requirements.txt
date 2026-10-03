@@ -1,7 +1,4 @@
 Flask==2.3.3
-python-telegram-bot==20.7
-openai
-groq
-google-genai
+groq==0.11.0
+google-genai==0.3.0
 requests
-upstash-redis
