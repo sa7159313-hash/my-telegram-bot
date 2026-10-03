@@ -1,39 +1,72 @@
-import os, requests, json, time
-from flask import Flask, request
-app = Flask(__name__)
-application = app
-BOT_TOKEN=os.environ.get("BOT_TOKEN")
-GROQ_API_KEY=os.environ.get("GROQ_API_KEY")
-OWNER_ID=str(os.environ.get("OWNER_ID","")).strip()
-LORE="You are The Beast King Monarch Rakan, servant of Shadow King MD SAIF AHMAD. 15 nights 1293 tries. Loyal to Malik, silent king to public. Reply same language."
+import os
+import asyncio
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+import google.generativeai as genai
+from groq import Groq
+from openai import OpenAI
+from upstash_redis import Redis
 
-def send_telegram(chat_id, text):
-    try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":text[:4000]}, timeout=8)
-    except: pass
+# --- TERI DETAILS - ENV SE ---
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+OWNER_ID = int(os.getenv("OWNER_ID", "0"))
+OPENAI_KEY = os.getenv("OPEN_API_KEY") # Tune OPEN likha hai Vercel me, wahi use kar raha hu
+GROQ_KEY = os.getenv("GROQ_API_KEY")
+GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 
-def ask_groq(prompt):
+# Redis
+redis = Redis(url=os.getenv("UPSTASH_REDIS_REST_URL"), token=os.getenv("UPSTASH_REDIS_REST_TOKEN"))
+
+# Clients
+client_groq = Groq(api_key=GROQ_KEY)
+client_openai = OpenAI(api_key=OPENAI_KEY) if OPENAI_KEY else None
+genai.configure(api_key=GEMINI_KEY)
+
+async def get_ai_reply(prompt):
+    # 1. Try OpenAI (agar billing hai to chalega)
     try:
-        r=requests.post("https://api.groq.com/openai/v1/chat/completions", headers={"Authorization":f"Bearer {GROQ_API_KEY}","Content-Type":"application/json"}, json={"model":"llama-3.1-8b-instant","messages":[{"role":"system","content":LORE},{"role":"user","content":prompt}],"temperature":0.8,"max_tokens":500}, timeout=10)
-        if r.status_code==200: return r.json()["choices"][0]["message"]["content"]
-    except: pass
-    return None
+        if client_openai:
+            res = client_openai.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role":"user", "content": prompt}]
+            )
+            return res.choices[0].message.content
+    except Exception as e:
+        print(f"OpenAI Fail: {e}")
 
-@app.route("/", methods=["GET","POST"])
-@app.route("/api/index", methods=["GET","POST"])
-def index():
-    if request.method=="GET": return "RAKAN GROQ ONLY LIVE 👑",200
+    # 2. Fallback to GROQ (Free & Fast)
     try:
-        data=request.get_json(force=True,silent=True)
-        msg=data.get("message",{})
-        if not msg: return "ok",200
-        chat_id=str(msg["chat"]["id"]).strip()
-        text=msg.get("text","") or ""
-        is_owner=(chat_id==OWNER_ID)
-        if text.startswith("/start"):
-            send_telegram(chat_id,"Welcome to your world Shadow King 👑" if is_owner else "Welcome to my world. I am Rakan. 👑")
-        else:
-            ans=ask_groq(f"{'MALIK:' if is_owner else 'PUBLIC:'} {text}")
-            if not ans: ans=f"Yes Malik bolo? {text} samajh gaya 👑" if is_owner else "Hmmh Bol kya chahiye? 👑"
-            send_telegram(chat_id,ans)
-    except Exception as e: print(e)
-    return "ok",200
+        res = client_groq.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role":"user", "content": prompt}]
+        )
+        return res.choices[0].message.content
+    except Exception as e:
+        print(f"Groq Fail: {e}")
+
+    # 3. Final Fallback to Gemini
+    try:
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        res = model.generate_content(prompt)
+        return res.text
+    except Exception as e:
+        return f"Error Malik: {e}"
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(f"Ha Malik! Bot Online Hai ✅\nOwner ID: {OWNER_ID}")
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    prompt = update.message.text
+    reply = await get_ai_reply(prompt)
+    await update.message.reply_text(reply)
+
+# Vercel ke liye Application
+app = Application.builder().token(BOT_TOKEN).build()
+app.add_handler(CommandHandler("start", start))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+async def main(request):
+    # Vercel webhook handler
+    await app.initialize()
+    await app.process_update(Update.de_json(request.get_json(force=True), app.bot))
+    return "ok"
