@@ -1,6 +1,7 @@
+Flask==2.3.3
 python-telegram-bot==20.7
 openai
 groq
-google-generativeai
+google-genai
+requests
 upstash-redis
-elevenlabs
