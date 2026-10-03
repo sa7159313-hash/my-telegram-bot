@@ -1,2 +1,6 @@
-flask
-requests
+python-telegram-bot==20.7
+openai
+groq
+google-generativeai
+upstash-redis
+elevenlabs
