@@ -1,72 +1,69 @@
+from flask import Flask, request, jsonify
 import os
-import asyncio
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-import google.generativeai as genai
 from groq import Groq
 from openai import OpenAI
-from upstash_redis import Redis
+from google import genai
 
-# --- TERI DETAILS - ENV SE ---
+app = Flask(__name__)
+
+# Teri Keys - Vercel se utha raha hai, tune jo naam rakha hai wahi
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-OWNER_ID = int(os.getenv("OWNER_ID", "0"))
-OPENAI_KEY = os.getenv("OPEN_API_KEY") # Tune OPEN likha hai Vercel me, wahi use kar raha hu
 GROQ_KEY = os.getenv("GROQ_API_KEY")
+OPEN_KEY = os.getenv("OPEN_API_KEY") # Tu OPEN_API_KEY likha hai, wahi liya
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 
-# Redis
-redis = Redis(url=os.getenv("UPSTASH_REDIS_REST_URL"), token=os.getenv("UPSTASH_REDIS_REST_TOKEN"))
+client_groq = Groq(api_key=GROQ_KEY) if GROQ_KEY else None
+client_open = OpenAI(api_key=OPEN_KEY) if OPEN_KEY else None
+client_gemini = genai.Client(api_key=GEMINI_KEY) if GEMINI_KEY else None
 
-# Clients
-client_groq = Groq(api_key=GROQ_KEY)
-client_openai = OpenAI(api_key=OPENAI_KEY) if OPENAI_KEY else None
-genai.configure(api_key=GEMINI_KEY)
-
-async def get_ai_reply(prompt):
-    # 1. Try OpenAI (agar billing hai to chalega)
+def get_ai_reply(prompt):
+    # 1. Try OpenAI
     try:
-        if client_openai:
-            res = client_openai.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role":"user", "content": prompt}]
-            )
-            return res.choices[0].message.content
+        if client_open:
+            r = client_open.chat.completions.create(model="gpt-4o-mini", messages=[{"role":"user","content":prompt}])
+            return r.choices[0].message.content
     except Exception as e:
-        print(f"OpenAI Fail: {e}")
+        print(f"OpenAI fail: {e}")
 
-    # 2. Fallback to GROQ (Free & Fast)
+    # 2. Groq - Free hai, ispe chalega
     try:
-        res = client_groq.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role":"user", "content": prompt}]
-        )
-        return res.choices[0].message.content
+        if client_groq:
+            r = client_groq.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role":"user","content":prompt}])
+            return r.choices[0].message.content
     except Exception as e:
-        print(f"Groq Fail: {e}")
+        print(f"Groq fail: {e}")
 
-    # 3. Final Fallback to Gemini
+    # 3. Gemini
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        res = model.generate_content(prompt)
-        return res.text
+        if client_gemini:
+            r = client_gemini.models.generate_content(model="gemini-1.5-flash", contents=prompt)
+            return r.text
     except Exception as e:
-        return f"Error Malik: {e}"
+        return f"Error: {e}"
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"Ha Malik! Bot Online Hai ✅\nOwner ID: {OWNER_ID}")
+@app.route('/api/index', methods=['GET','POST'])
+def webhook():
+    if request.method == 'GET':
+        return "Bot is Running - Malik", 200
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    prompt = update.message.text
-    reply = await get_ai_reply(prompt)
-    await update.message.reply_text(reply)
+    # Telegram ka update
+    try:
+        import requests
+        data = request.get_json()
+        chat_id = data['message']['chat']['id']
+        text = data['message'].get('text', 'Hi')
 
-# Vercel ke liye Application
-app = Application.builder().token(BOT_TOKEN).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        reply = get_ai_reply(text)
 
-async def main(request):
-    # Vercel webhook handler
-    await app.initialize()
-    await app.process_update(Update.de_json(request.get_json(force=True), app.bot))
-    return "ok"
+        # Wapas Telegram pe bhej
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        requests.post(url, json={"chat_id": chat_id, "text": reply})
+
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        print(f"Webhook Error: {e}")
+        return jsonify({"ok": False}), 200
+
+# Vercel ke liye zaruri
+if __name__ == "__main__":
+    app.run()
