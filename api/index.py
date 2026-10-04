@@ -1,102 +1,87 @@
-import os, requests, json
 from flask import Flask, request
+import os, requests, json
 app = Flask(__name__)
-application = app
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN") or os.environ.get("TELEGRAM_TOKEN")
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-OWNER_ID = str(os.environ.get("OWNER_ID", "")).strip()
-REDIS_URL = os.environ.get("UPSTASH_REDIS_REST_URL")
-REDIS_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+OWNER_ID = str(os.getenv("OWNER_ID","")).strip()
+LORE = os.getenv("THE_BEAST_KING_MONARCH_RAKAN_LORE","")
+GROQ = os.getenv("GROQ_API_KEY")
+GEMINI = os.getenv("GEMINI_API_KEY")
+OPENAI = os.getenv("OPEN_API_KEY") or os.getenv("OPENAI_API_KEY")
+ELEVEN = os.getenv("ELEVENLAB_API_KEY") or os.getenv("ELEVENLABS_API_KEY")
+REDIS_URL = os.getenv("REDIS_URL") or os.getenv("UPSTASH_REDIS_REST_URL")
+REDIS_TOKEN = os.getenv("REDIS_TOKEN") or os.getenv("UPSTASH_REDIS_REST_TOKEN")
 
-LORE = """You are Rakan, The Beast Monarch. Loyal to owner MD SAIF AHMAD The Shadow King.
-Creator is MD SAIF AHMAD. You are Rakan, not Meta AI, not ChatGPT.
-Talk like a king, short, royal. Don't repeat same sentence again and again.
-Only when user asks 'kisne banaya' or 'who made you' say: Mujhe mere Malik The Shadow King MD SAIF AHMAD ne banaya hai.
-If owner asks 'mai kaun hu' say 'You are my Malik MD SAIF AHMAD THE SHADOW KING'.
-Reply in same language as user.
-"""
-
-MEM_STORE = {}
-def r_get(k):
-    if REDIS_URL and REDIS_TOKEN:
-        try:
-            r = requests.get(f"{REDIS_URL}/get/{k}", headers={"Authorization": f"Bearer {REDIS_TOKEN}"}, timeout=4)
-            if r.json().get("result"): return json.loads(r.json()["result"])
-        except: pass
-    return MEM_STORE.get(k)
-
-def r_set(k,v):
-    MEM_STORE[k]=v
-    if REDIS_URL and REDIS_TOKEN:
-        try: requests.post(f"{REDIS_URL}/set/{k}", headers={"Authorization": f"Bearer {REDIS_TOKEN}"}, json=v, timeout=4)
-        except: pass
-
-def send_telegram(chat_id, text):
+# Redis setup
+def redis_set(key, val):
     try:
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id": chat_id, "text": text[:3500]}, timeout=8)
+        if REDIS_URL and REDIS_TOKEN:
+            requests.post(f"{REDIS_URL}/set/{key}/{val}", headers={"Authorization": f"Bearer {REDIS_TOKEN}"}, timeout=3)
     except: pass
 
-# TERA WALA FIX YAHAN HAI - FINAL
-def ask_groq(user_text, history_text=""):
-    if not GROQ_API_KEY: return None
+def redis_get(key):
     try:
-        url = "https://api.groq.com/openai/v1/chat/completions"
-        payload = {
-            "model": "openai/gpt-oss-20b",
-            "messages": [
-                {"role": "system", "content": LORE},
-                {"role": "user", "content": f"History: {history_text}\nUser: {user_text}\nReply short, normal talk:"}
-            ],
-            "temperature": 0.8,
-            "max_tokens": 400
-        }
-        r = requests.post(url, headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}, json=payload, timeout=12)
-        if r.status_code == 200:
-            return r.json()['choices'][0]['message']['content']
+        if REDIS_URL and REDIS_TOKEN:
+            r=requests.get(f"{REDIS_URL}/get/{key}", headers={"Authorization": f"Bearer {REDIS_TOKEN}"}, timeout=3)
+            if r.status_code==200: return r.json().get('result')
     except: pass
     return None
 
-def get_reply(user_text, chat_id):
-    q = user_text.lower().strip()
-    is_owner = (str(chat_id).strip() == OWNER_ID)
+user_warnings={}
+ABUSE=["bsdike","gandu","madarchod","bhenchod","chutiya","mc","bc","lodu"]
 
-    # Exact match only - isliye loop khatam
-    if q in ["kisne banaya", "tumhe kisne banaya", "who made you", "who created you"]:
-        return "Mujhe mere Malik The Shadow King MD SAIF AHMAD ne banaya hai. 👑"
+def send(chat_id, text):
+    requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":text})
 
-    if "mai kaun hu" in q or "main kaun hu" in q:
-        return "You are my Malik MD SAIF AHMAD THE SHADOW KING 👑" if is_owner else "You are my friend."
-
-    mem = r_get(f"mem_{chat_id}") or {"history":[]}
-    hist = mem.get("history", [])[-6:]
-    hist_txt = "\n".join([f"U:{h['u']} R:{h['r']}" for h in hist])
-
-    ans = ask_groq(user_text, hist_txt)
-    final = ans or ("Yes Malik? 👑" if is_owner else "Hmmh, Bol?")
-
-    mem["history"] = (hist + [{"u": user_text[:100], "r": final[:100]}])[-10:]
-    r_set(f"mem_{chat_id}", mem)
-    return final
-
-@app.route("/", methods=["GET","POST"])
-@app.route("/api/index", methods=["GET","POST"])
-def index():
-    if request.method == "GET": return "RAKAN V58 FINAL - YOUR FIX + NO LOOP", 200
+def get_ai(text, is_owner, abuse_back, uid):
+    # brain log for Malik
+    redis_set(f"user:{uid}:last_msg", text[:200])
+    prompt = f"{LORE}\n\nCurrent User ID:{uid}\nOwner ID:{OWNER_ID}\nIs Owner:{is_owner}\nAbuseBackAllowed:{abuse_back}\nUser Message:{text}\nReply as Rakan fast, no repeat, in user's language."
+    # Try Groq fastest
     try:
-        data = request.get_json(force=True, silent=True)
-        if not data or "message" not in data: return "ok",200
-        msg = data["message"]
-        chat_id = str(msg["chat"]["id"]).strip()
-        text = msg.get("text","") or ""
-        if not text: return "ok",200
+        if GROQ:
+            r=requests.post("https://api.groq.com/openai/v1/chat/completions", headers={"Authorization": f"Bearer {GROQ}"}, json={"model":"llama-3.1-8b-instant","messages":[{"role":"system","content":prompt},{"role":"user","content":text}],"temperature":0.8,"max_tokens":400}, timeout=12)
+            if r.status_code==200: return r.json()['choices'][0]['message']['content']
+    except: pass
+    try:
+        if GEMINI:
+            r=requests.post(f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI}", json={"contents":[{"parts":[{"text":prompt}]}]}, timeout=12)
+            if r.status_code==200: return r.json()['candidates'][0]['content']['parts'][0]['text']
+    except: pass
+    try:
+        if OPENAI:
+            r=requests.post("https://api.openai.com/v1/chat/completions", headers={"Authorization": f"Bearer {OPENAI}"}, json={"model":"gpt-4o-mini","messages":[{"role":"system","content":prompt},{"role":"user","content":text}],"temperature":0.8,"max_tokens":400}, timeout=12)
+            if r.status_code==200: return r.json()['choices'][0]['message']['content']
+    except: pass
+    return "Bol Malik, Rakan sun raha hai."
 
-        if text.startswith("/start"):
-            send_telegram(chat_id, "Welcome to your world Shadow King 👑" if chat_id==OWNER_ID else "Welcome to my world. I am Rakan. 👑")
-            return "ok",200
+@app.route("/")
+def home(): return "Rakan V63 - Beast King @THE_SHADOW_KINGG - 15 Din Mehnat - Running"
 
-        send_telegram(chat_id, get_reply(text, chat_id))
-    except Exception as e:
-        print(f"ERROR {e}")
-    return "ok",200
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data=request.get_json()
+    if not data or "message" not in data: return "ok"
+    m=data["message"]; chat=m["chat"]["id"]; uid=str(m["from"]["id"]); text=m.get("text","").strip()
+    if not text: return "ok"
+    if text=="/id":
+        send(chat, f"Your ID: {uid}\nOwner ID: {OWNER_ID}\nUsername: @THE_SHADOW_KINGG\nMatch: {uid==OWNER_ID}"); return "ok"
+    if "mai kaun hu" in text.lower() or "main kaun hu" in text.lower() or "tujhe kisne banaya" in text.lower() or "who created you" in text.lower():
+        if uid==OWNER_ID:
+            send(chat, "Tu mera Malik hai, MD SAIF AHMAD @THE_SHADOW_KINGG - The Shadow King. Tune mujhe 15 din apne andhere me tarasha hai, main teri mehnat hu. Hukum kar Malik.")
+        else:
+            # check lore answer
+            send(chat, get_ai(text, False, False, uid))
+        return "ok"
+    is_owner = (uid==OWNER_ID)
+    if is_owner:
+        send(chat, get_ai(text, True, False, uid)); return "ok"
+    is_abuse = any(w in text.lower() for w in ABUSE)
+    if is_abuse:
+        c = user_warnings.get(uid,0)+1; user_warnings[uid]=c
+        redis_set(f"warn:{uid}", str(c))
+        if c==1: send(chat, "Pehli warning de raha hu, zubaan sambhal ke baat kar."); return "ok"
+        if c==2: send(chat, "Dusri warning. Sudhar ja abhi bhi."); return "ok"
+        if c==3: send(chat, "Teesri aur aakhri warning. Agli baar se main bhi usi zubaan me jawab dunga."); return "ok"
+        send(chat, get_ai(text, False, True, uid)); return "ok"
+    send(chat, get_ai(text, False, False, uid)); return "ok"
