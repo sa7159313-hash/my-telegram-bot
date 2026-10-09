@@ -1,168 +1,139 @@
-import os, json, requests, random, time
-from flask import Flask, request
+import os
+import random
+import requests
+from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# ========== SMART LOADER - KEY / KEYS SAB CHALEGA ==========
+# --- KEY HANDLER - KEY ho ya KEYS dono pakdega ---
 def get_keys(*names):
-    all_keys = []
+    keys = []
     for name in names:
-        val = os.getenv(name, "")
+        val = os.environ.get(name, "")
         if val:
-            for k in val.split(","):
+            # comma ya newline se multiple keys ho to split kar dega
+            for k in val.replace("\n", ",").split(","):
                 k = k.strip()
-                if k and k not in all_keys:
-                    all_keys.append(k)
-    return all_keys
+                if k and k not in keys:
+                    keys.append(k)
+    return keys
 
-BOT_TOKEN = os.getenv("BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN") or ""
-GROQ_KEYS = get_keys("GROQ_API_KEYS","GROQ_API_KEY","GROQ")
-GEMINI_KEYS = get_keys("GEMINI_API_KEYS","GEMINI_API_KEY","GOOGLE_API_KEY","GEMINI")
-OPENAI_KEYS = get_keys("OPENAI_API_KEYS","OPENAI_API_KEY","OPENAI")
-ELEVEN_KEY = os.getenv("ELEVENLABS_API_KEY") or os.getenv("ELEVENLABS_API_KEYS") or ""
-ELEVEN_MALE = os.getenv("ELEVEN_MALE_VOICE") or os.getenv("ELEVEN_MALE_VOICE_ID") or ""
-ELEVEN_FEMALE = os.getenv("ELEVEN_FEMALE_VOICE") or ""
-UPSTASH_URL = os.getenv("UPSTASH_REDIS_REST_URL") or ""
-UPSTASH_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN") or ""
-LORE = os.getenv("THE_BEAST_KING_MONARCH_RAKAN_LORE") or "You are RAKAN - The Beast King Monarch. You are savage, dominant, powerful, but loyal and soft for your owner 7955623338 (Malik). Talk in Hinglish, use 👑 emoji, roast others but respect owner. Never break character."
+GROQ_KEYS = get_keys("GROQ_API_KEYS", "GROQ_API_KEY", "GROQ")
+GEMINI_KEYS = get_keys("GEMINI_API_KEYS", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GEMINI")
+OPENAI_KEYS = get_keys("OPENAI_API_KEYS", "OPENAI_API_KEY", "OPENAI")
 
-print(f"### V115 BOOT ### GROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} OPENAI:{len(OPENAI_KEYS)} BOT:{'OK' if BOT_TOKEN else 'NO'} REDIS:{'OK' if UPSTASH_URL else 'NO'}")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+BOT_TOKEN = BOT_TOKEN.strip()
 
-# ========== REDIS MEMORY ==========
-def redis_get(chat_id):
-    if not UPSTASH_URL or not UPSTASH_TOKEN: return []
+REDIS_URL = os.environ.get("UPSTASH_REDIS_REST_URL", "") or os.environ.get("REDIS_URL", "")
+REDIS_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN", "")
+
+print(f"### V115 BOOT ### GROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} OPENAI:{len(OPENAI_KEYS)} BOT:{'OK' if BOT_TOKEN else 'NO'} REDIS:{'OK' if REDIS_URL else 'NO'}")
+
+# --- REDIS ---
+def redis_get(key):
     try:
-        r = requests.get(f"{UPSTASH_URL}/get/{chat_id}", headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"}, timeout=5)
-        if r.status_code==200 and r.json().get("result"):
-            return json.loads(r.json()["result"])
+        if not REDIS_URL or not REDIS_TOKEN: return None
+        r = requests.post(f"{REDIS_URL}/get/{key}", headers={"Authorization": f"Bearer {REDIS_TOKEN}"}, timeout=5)
+        if r.status_code == 200:
+            data = r.json()
+            return data.get("result")
     except: pass
-    return []
+    return None
 
-def redis_set(chat_id, history):
-    if not UPSTASH_URL or not UPSTASH_TOKEN: return
+def redis_set(key, val):
     try:
-        # last 10 messages only
-        history = history[-10:]
-        requests.get(f"{UPSTASH_URL}/set/{chat_id}/{json.dumps(history)}", headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"}, timeout=5)
+        if not REDIS_URL or not REDIS_TOKEN: return
+        requests.post(f"{REDIS_URL}/set/{key}", headers={"Authorization": f"Bearer {REDIS_TOKEN}"}, json={"value": val}, timeout=5)
     except: pass
 
-# ========== TG SEND ==========
-def send_tg(chat_id, text, reply_to=None):
-    if not BOT_TOKEN: return
-    try:
-        payload = {"chat_id": chat_id, "text": text[:4096]}
-        if reply_to: payload["reply_to_message_id"] = reply_to
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=payload, timeout=10)
-    except Exception as e:
-        print(f"SEND_ERR {e}")
-
-# ========== AI CALLS ==========
-def call_groq(prompt, history, key):
-    try:
-        messages = [{"role":"system","content":LORE}]
-        for h in history[-6:]:
-            messages.append(h)
-        messages.append({"role":"user","content":prompt})
-        r = requests.post("https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {key}"},
-            json={"model":"llama-3.3-70b-versatile","messages":messages,"temperature":0.85,"max_tokens":1200},
-            timeout=25)
-        print(f"GROQ {r.status_code} {r.text[:300]}")
-        if r.status_code==200:
-            return r.json()["choices"][0]["message"]["content"]
-    except Exception as e: print(f"GROQ_ERR {e}")
+# --- AI ENGINES ---
+def ask_groq(prompt):
+    if not GROQ_KEYS: return None
+    for api_key in GROQ_KEYS:
+        try:
+            r = requests.post("https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"model": "llama-3.1-8b-instant", "messages": [{"role": "user", "content": prompt}], "temperature": 0.7, "max_tokens": 500},
+                timeout=15)
+            if r.status_code == 200:
+                return r.json()["choices"][0]["message"]["content"]
+        except: continue
     return None
 
-def call_gemini(prompt, history, key):
-    try:
-        # gemini me history string bana dete hain
-        full = LORE + "\n"
-        for h in history[-4:]:
-            full += f"{h['role']}: {h['content']}\n"
-        full += f"user: {prompt}"
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
-        r = requests.post(url, json={"contents":[{"parts":[{"text": full}]}]}, timeout=25)
-        print(f"GEMINI {r.status_code} {r.text[:300]}")
-        if r.status_code==200:
-            return r.json()["candidates"][0]["content"]["parts"][0]["text"]
-    except Exception as e: print(f"GEMINI_ERR {e}")
+def ask_gemini(prompt):
+    if not GEMINI_KEYS: return None
+    for api_key in GEMINI_KEYS:
+        try:
+            r = requests.post(f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}",
+                headers={"Content-Type": "application/json"},
+                json={"contents": [{"parts": [{"text": prompt}]}]},
+                timeout=15)
+            if r.status_code == 200:
+                return r.json()["candidates"][0]["content"]["parts"][0]["text"]
+        except: continue
     return None
 
-def call_openai(prompt, history, key):
-    try:
-        messages = [{"role":"system","content":LORE}]
-        for h in history[-6:]: messages.append(h)
-        messages.append({"role":"user","content":prompt})
-        r = requests.post("https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {key}"},
-            json={"model":"gpt-4o-mini","messages":messages},
-            timeout=25)
-        print(f"OPENAI {r.status_code}")
-        if r.status_code==200:
-            return r.json()["choices"][0]["message"]["content"]
-    except Exception as e: print(f"OPENAI_ERR {e}")
+def ask_openai(prompt):
+    if not OPENAI_KEYS: return None
+    for api_key in OPENAI_KEYS:
+        try:
+            r = requests.post("https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"model": "gpt-3.5-turbo", "messages": [{"role": "user", "content": prompt}], "max_tokens": 500},
+                timeout=15)
+            if r.status_code == 200:
+                return r.json()["choices"][0]["message"]["content"]
+        except: continue
     return None
 
-# ========== MAIN WEBHOOK ==========
+def get_ai_reply(prompt):
+    # Round 1,2,3 try
+    ans = ask_groq(prompt)
+    if ans: return ans
+    ans = ask_gemini(prompt)
+    if ans: return ans
+    ans = ask_openai(prompt)
+    if ans: return ans
+    return None
+
+# --- ROUTES ---
 @app.route("/", methods=["GET"])
 def home():
-    return f"V115 BEAST KING FULL 👑 | GROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} OPENAI:{len(OPENAI_KEYS)} BOT:{'OK' if BOT_TOKEN else 'NO'} REDIS:{'OK' if UPSTASH_URL else 'NO'} | All KEY/KEYS supported"
+    return f"V115 BEAST KING FULL 👑 | GROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} OPENAI:{len(OPENAI_KEYS)} BOT:{'OK' if BOT_TOKEN else 'NO'} | KEY/KEYS both supported"
 
-@app.route("/api", methods=["GET","POST"])
-def api():
-    if request.method=="GET":
-        return "POST Telegram updates here"
+@app.route("/api", methods=["POST"])
+def webhook():
+    try:
+        data = request.get_json(force=True)
+        if not data or "message" not in data: return jsonify({"ok": True})
+        msg = data["message"]
+        chat_id = msg["chat"]["id"]
+        text = msg.get("text", "")
+        if not text: return jsonify({"ok": True})
 
-    data = request.json or {}
-    if "message" not in data: return {"ok":True}
+        if text.startswith("/start"):
+            reply = f"Monarch Rakan BEAST KING 👑 is Online!\nGROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} OPENAI:{len(OPENAI_KEYS)}"
+        else:
+            # 3 chakkar logic
+            ai_text = get_ai_reply(text)
+            if not ai_text:
+                if len(GROQ_KEYS)==0 and len(GEMINI_KEYS)==0:
+                    reply = f"Malik keys khatam ho gayi 😭 Vercel me GROQ_API_KEYS aur GEMINI_API_KEYS check kar, nayi keys daal aur redeploy kar."
+                elif len(GROQ_KEYS)>0 or len(GEMINI_KEYS)>0:
+                    reply = f"Malik saare servers fail 😭\nGROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} OPENAI:{len(OPENAI_KEYS)}\nKey expire ya limit check karo."
+                else:
+                    reply = "Malik 3 chakkar ♻️ ghum liya, brain down hai. 30 sec baad try kar."
+            else:
+                reply = ai_text
 
-    msg = data["message"]
-    chat_id = msg["chat"]["id"]
-    text = msg.get("text","")
-    if not text: return {"ok":True}
-    user_id = str(msg["from"]["id"])
-    is_owner = "7955623338" in user_id
+        # Send to Telegram
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                      json={"chat_id": chat_id, "text": reply}, timeout=10)
+        return jsonify({"ok": True})
+    except Exception as e:
+        print(f"ERROR: {e}")
+        return jsonify({"ok": True})
 
-    # commands
-    if text.startswith("/start"):
-        send_tg(chat_id, "Aagaya hu Malik 👑\nBeast King Rakan live hai. Bolo kya kaam hai?" if is_owner else "Beast King Rakan live hai 👑 Bolo kya chahiye?")
-        return {"ok":True}
-
-    history = redis_get(f"rakan:{chat_id}")
-    answer = None
-
-    # ROUND 1 - GROQ
-    for k in GROQ_KEYS:
-        answer = call_groq(text, history, k)
-        if answer: break
-
-    # ROUND 2 - GEMINI
-    if not answer:
-        for k in GEMINI_KEYS:
-            answer = call_gemini(text, history, k)
-            if answer: break
-
-    # ROUND 3 - OPENAI
-    if not answer:
-        for k in OPENAI_KEYS:
-            answer = call_openai(text, history, k)
-            if answer: break
-
-    if answer:
-        if is_owner and not answer.startswith("Ji Malik"):
-            answer = f"Ji Malik 👑 {answer}"
-        send_tg(chat_id, answer)
-        # save memory
-        history.append({"role":"user","content":text})
-        history.append({"role":"assistant","content":answer})
-        redis_set(f"rakan:{chat_id}", history)
-    else:
-        send_tg(chat_id, f"Malik saare servers fail 👑\nGROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} OPENAI:{len(OPENAI_KEYS)}\nKey expire ya limit check karo.")
-
-    return {"ok":True}
-
-@app.route("/setwebhook")
-def sethook():
-    if not BOT_TOKEN: return "BOT_TOKEN missing"
-    r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url=https://my-telegram-bot-lime.vercel.app/api")
-    return r.json()
+if __name__ == "__main__":
+    app.run()
