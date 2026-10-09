@@ -20,12 +20,14 @@ def get_all_keys():
 
 GROQ_KEYS, GEMINI_KEYS, OPENAI_KEYS = get_all_keys()
 ELEVEN_KEY = (os.environ.get("ELEVENLABS_API_KEY") or "").strip()
-MALE_VOICE = (os.environ.get("ELEVEN_MALE_VOICE") or "onwK4e9ZLuTAKq10Bo4a").strip()
-FEMALE_VOICE = (os.environ.get("ELEVEN_FEMALE_VOICE") or "EXAVITQu4vr4xnSDxMaL").strip()
+
+# ===== FIXED VOICE ID - 404 GONE =====
+MALE_VOICE = (os.environ.get("ELEVEN_MALE_VOICE") or "VR6AewLTigWG4xSOukaG").strip() # Arnold - Khatarnak
+FEMALE_VOICE = (os.environ.get("ELEVEN_FEMALE_VOICE") or "EXAVITQu4vr4xnSDxMaL").strip() # Bella - Soft
 UPSTASH_URL = (os.environ.get("UPSTASH_REDIS_REST_URL") or "").strip().rstrip("/")
 UPSTASH_TOKEN = (os.environ.get("UPSTASH_REDIS_REST_TOKEN") or "").strip()
 
-print(f"### V122 FINAL ### GROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} OPEN:{len(OPENAI_KEYS)} ELEVEN:{1 if ELEVEN_KEY else 0}")
+print(f"### V123 BEAST FIXED ### GROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} OPEN:{len(OPENAI_KEYS)} ELEVEN:{1 if ELEVEN_KEY else 0} MALE:{MALE_VOICE}")
 
 BASE_LORE = """
 You are Shadow Monarch Rakan - THE BEAST MONARCH 👑. Aggressive, Dominant, Loyal.
@@ -74,7 +76,7 @@ def send_with_voice(chat_id, text, vg="male"):
             timeout=20)
         print(f"ELEVEN {vr.status_code} {vr.text[:200]}")
         if vr.status_code==200:
-            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendVoice", data={"chat_id":chat_id}, files={"voice":("rakan.mp3",vr.content)}, timeout=20)
+            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendVoice", data={"chat_id":chat_id}, files={"voice":("rakan.ogg",vr.content)}, timeout=20)
         else:
             if str(chat_id)==OWNER_ID:
                 requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"⚠️ Voice fail {vr.status_code}: {vr.text[:250]}"}, timeout=10)
@@ -135,7 +137,7 @@ def circle_brain(text, hist=""):
 
 @app.route("/", methods=["GET"])
 def home():
-    return f"V122 BEAST FINAL 👑<br>GROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} OPEN:{len(OPENAI_KEYS)} BAD:{len(BAD_KEYS)}<br>VOICE:{'ON' if ELEVEN_KEY else 'OFF'} MALE:{MALE_VOICE}",200
+    return f"V123 BEAST FINAL 👑<br>GROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} OPEN:{len(OPENAI_KEYS)} BAD:{len(BAD_KEYS)}<br>VOICE:{'ON' if ELEVEN_KEY else 'OFF'} MALE:{MALE_VOICE}",200
 
 @app.route("/api", methods=["POST"])
 @app.route("/api/index", methods=["POST"])
