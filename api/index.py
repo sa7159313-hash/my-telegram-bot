@@ -1,17 +1,15 @@
 import os
-import random
 import requests
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# --- KEY HANDLER - KEY ho ya KEYS dono pakdega ---
+# --- KEY / KEYS dono pakdega ---
 def get_keys(*names):
     keys = []
     for name in names:
         val = os.environ.get(name, "")
         if val:
-            # comma ya newline se multiple keys ho to split kar dega
             for k in val.replace("\n", ",").split(","):
                 k = k.strip()
                 if k and k not in keys:
@@ -22,77 +20,67 @@ GROQ_KEYS = get_keys("GROQ_API_KEYS", "GROQ_API_KEY", "GROQ")
 GEMINI_KEYS = get_keys("GEMINI_API_KEYS", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GEMINI")
 OPENAI_KEYS = get_keys("OPENAI_API_KEYS", "OPENAI_API_KEY", "OPENAI")
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-BOT_TOKEN = BOT_TOKEN.strip()
-
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 REDIS_URL = os.environ.get("UPSTASH_REDIS_REST_URL", "") or os.environ.get("REDIS_URL", "")
 REDIS_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN", "")
 
-print(f"### V115 BOOT ### GROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} OPENAI:{len(OPENAI_KEYS)} BOT:{'OK' if BOT_TOKEN else 'NO'} REDIS:{'OK' if REDIS_URL else 'NO'}")
-
-# --- REDIS ---
-def redis_get(key):
-    try:
-        if not REDIS_URL or not REDIS_TOKEN: return None
-        r = requests.post(f"{REDIS_URL}/get/{key}", headers={"Authorization": f"Bearer {REDIS_TOKEN}"}, timeout=5)
-        if r.status_code == 200:
-            data = r.json()
-            return data.get("result")
-    except: pass
-    return None
-
-def redis_set(key, val):
-    try:
-        if not REDIS_URL or not REDIS_TOKEN: return
-        requests.post(f"{REDIS_URL}/set/{key}", headers={"Authorization": f"Bearer {REDIS_TOKEN}"}, json={"value": val}, timeout=5)
-    except: pass
+print(f"### V116 FINAL BOOT ### GROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} OPENAI:{len(OPENAI_KEYS)} BOT:{'OK' if BOT_TOKEN else 'NO'}")
 
 # --- AI ENGINES ---
 def ask_groq(prompt):
     if not GROQ_KEYS: return None
-    for api_key in GROQ_KEYS:
-        try:
-            r = requests.post("https://api.groq.com/openai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={"model": "llama-3.1-8b-instant", "messages": [{"role": "user", "content": prompt}], "temperature": 0.7, "max_tokens": 500},
-                timeout=15)
-            if r.status_code == 200:
-                return r.json()["choices"][0]["message"]["content"]
-        except: continue
+    models = ["llama-3.1-8b-instant", "llama-3.1-70b-versatile", "mixtral-8x7b-32768"]
+    for key in GROQ_KEYS:
+        for model in models:
+            try:
+                r = requests.post("https://api.groq.com/openai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                    json={"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": 0.7, "max_tokens": 600},
+                    timeout=20)
+                if r.status_code == 200:
+                    return r.json()["choices"][0]["message"]["content"]
+                print(f"GROQ {r.status_code} {r.text[:150]} model:{model}")
+            except Exception as e:
+                print(f"GROQ ERR {e}")
+                continue
     return None
 
 def ask_gemini(prompt):
     if not GEMINI_KEYS: return None
-    for api_key in GEMINI_KEYS:
+    for key in GEMINI_KEYS:
         try:
-            r = requests.post(f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}",
+            r = requests.post(f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={key}",
                 headers={"Content-Type": "application/json"},
                 json={"contents": [{"parts": [{"text": prompt}]}]},
-                timeout=15)
+                timeout=20)
             if r.status_code == 200:
                 return r.json()["candidates"][0]["content"]["parts"][0]["text"]
-        except: continue
+            print(f"GEM {r.status_code} {r.text[:150]}")
+        except Exception as e:
+            print(f"GEM ERR {e}")
+            continue
     return None
 
 def ask_openai(prompt):
     if not OPENAI_KEYS: return None
-    for api_key in OPENAI_KEYS:
+    for key in OPENAI_KEYS:
         try:
             r = requests.post("https://api.openai.com/v1/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={"model": "gpt-3.5-turbo", "messages": [{"role": "user", "content": prompt}], "max_tokens": 500},
-                timeout=15)
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={"model": "gpt-3.5-turbo", "messages": [{"role": "user", "content": prompt}], "max_tokens": 600},
+                timeout=20)
             if r.status_code == 200:
                 return r.json()["choices"][0]["message"]["content"]
         except: continue
     return None
 
 def get_ai_reply(prompt):
-    # Round 1,2,3 try
     ans = ask_groq(prompt)
     if ans: return ans
+    print("GROQ fail, trying GEMINI")
     ans = ask_gemini(prompt)
     if ans: return ans
+    print("GEM fail, trying OPENAI")
     ans = ask_openai(prompt)
     if ans: return ans
     return None
@@ -100,7 +88,7 @@ def get_ai_reply(prompt):
 # --- ROUTES ---
 @app.route("/", methods=["GET"])
 def home():
-    return f"V115 BEAST KING FULL 👑 | GROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} OPENAI:{len(OPENAI_KEYS)} BOT:{'OK' if BOT_TOKEN else 'NO'} | KEY/KEYS both supported"
+    return f"V116 FINAL BEAST KING 👑 | GROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} OPENAI:{len(OPENAI_KEYS)} BOT:{'OK' if BOT_TOKEN else 'NO'}"
 
 @app.route("/api", methods=["POST"])
 def webhook():
@@ -112,28 +100,18 @@ def webhook():
         text = msg.get("text", "")
         if not text: return jsonify({"ok": True})
 
-        if text.startswith("/start"):
-            reply = f"Monarch Rakan BEAST KING 👑 is Online!\nGROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} OPENAI:{len(OPENAI_KEYS)}"
+        if text.lower().startswith("/start"):
+            reply = f"Monarch Rakan BEAST KING V116 👑 Online!\nGROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} OPENAI:{len(OPENAI_KEYS)}"
         else:
-            # 3 chakkar logic
             ai_text = get_ai_reply(text)
             if not ai_text:
-                if len(GROQ_KEYS)==0 and len(GEMINI_KEYS)==0:
-                    reply = f"Malik keys khatam ho gayi 😭 Vercel me GROQ_API_KEYS aur GEMINI_API_KEYS check kar, nayi keys daal aur redeploy kar."
-                elif len(GROQ_KEYS)>0 or len(GEMINI_KEYS)>0:
-                    reply = f"Malik saare servers fail 😭\nGROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} OPENAI:{len(OPENAI_KEYS)}\nKey expire ya limit check karo."
-                else:
-                    reply = "Malik 3 chakkar ♻️ ghum liya, brain down hai. 30 sec baad try kar."
+                reply = f"Malik saare servers fail 😭 GROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} OPENAI:{len(OPENAI_KEYS)}\nKeys check kar, limit ya model error hai. Log me GROQ/GEM error dekho."
             else:
                 reply = ai_text
 
-        # Send to Telegram
         requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
                       json={"chat_id": chat_id, "text": reply}, timeout=10)
         return jsonify({"ok": True})
     except Exception as e:
-        print(f"ERROR: {e}")
+        print(f"WEBHOOK ERR: {e}")
         return jsonify({"ok": True})
-
-if __name__ == "__main__":
-    app.run()
