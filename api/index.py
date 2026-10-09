@@ -2,11 +2,20 @@ import os, requests, time
 from flask import Flask, request
 app = Flask(__name__)
 
+# ===== ENV =====
+BOT_TOKEN = os.getenv("BOT_TOKEN") # Vercel me daalna padega
 OWNER_ID = "7955623338"
 LORE = os.getenv("THE_BEAST_KING_MONARCH_RAKAN_LORE", "You are Rakan Shadow King Monarch. Owner Queen SFW lover for 7955623338, aggressive blocker for public. App builder. No porn/illegal.")
 GROQ_KEYS = [k.strip() for k in os.getenv("GROQ_API_KEYS","").split(",") if k.strip()]
 GEMINI_KEYS = [k.strip() for k in os.getenv("GEMINI_API_KEYS","").split(",") if k.strip()]
 OPENAI_KEYS = [k.strip() for k in os.getenv("OPENAI_API_KEYS","").split(",") if k.strip()]
+
+def send_telegram(chat_id, text):
+    if not BOT_TOKEN: return
+    try:
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+        json={"chat_id": chat_id, "text": text[:4000]}, timeout=10)
+    except: pass
 
 def call_groq(p,k):
     try:
@@ -33,8 +42,8 @@ def recycler_brain(prompt, uid):
     if not is_owner and any(x in prompt.lower() for x in ["porn","nude","xxx","hack","child"]):
         return "Aukat me reh public 👑 Yahan ye sab ban hai."
     final_p = f"[OWNER QUEEN SFW APP-BUILDER] {prompt}" if is_owner else f"[PUBLIC BEAST KING] {prompt}"
-    for rnd in range(3): # ♻️ 3 chakkar
-        print(f"♻️ ROUND {rnd+1} GROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} GPT:{len(OPENAI_KEYS)}")
+    for rnd in range(3):
+        print(f"♻️ ROUND {rnd+1}")
         for k in GROQ_KEYS:
             a=call_groq(final_p,k)
             if a: return a
@@ -49,10 +58,29 @@ def recycler_brain(prompt, uid):
 
 @app.route("/", methods=["GET"])
 def home():
-    return f"V109 RECYCLER LIVE ♻️ | GROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} OPEN:{len(OPENAI_KEYS)}"
+    return f"V110 ONE-FILE RECYCLER 👑 | GROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} GPT:{len(OPENAI_KEYS)}"
 
-@app.route("/api", methods=["POST"])
-def api():
+@app.route("/api", methods=["POST","GET"])
+def webhook():
+    if request.method=="GET":
+        return "Webhook Alive. POST from Telegram here."
     data=request.json or {}
-    txt=recycler_brain(data.get("prompt","hi"), data.get("user_id","0"))
-    return {"text":txt, "voice_needed":True, "owner":str(data.get("user_id"))==OWNER_ID}
+    # Telegram se aaya hai ya direct?
+    if "message" in data: # Telegram webhook
+        chat_id = data["message"]["chat"]["id"]
+        user_id = data["message"]["from"]["id"]
+        text = data["message"].get("text","hi")
+        reply = recycler_brain(text, user_id)
+        send_telegram(chat_id, reply)
+        return {"ok":True}
+    else: # Direct API call
+        prompt=data.get("prompt","hi")
+        uid=data.get("user_id","0")
+        return {"text": recycler_brain(prompt, uid), "voice_needed":True}
+
+# Telegram webhook set karne ke liye ye route
+@app.route("/setwebhook", methods=["GET"])
+def sethook():
+    url = f"https://my-telegram-bot-lime.vercel.app/api"
+    r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url={url}")
+    return r.json()
