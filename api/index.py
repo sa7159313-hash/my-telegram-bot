@@ -123,3 +123,31 @@ def circle_brain(text, hist=""):
 
 @app.route("/", methods=["GET"])
 def home():
+    return f"V125 ANTI-LOOP 👑 GROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} OPEN:{len(OPENAI_KEYS)}",200
+
+@app.route("/api", methods=["POST"])
+@app.route("/api/index", methods=["POST"])
+def webhook():
+    data=request.get_json(force=True,silent=True)
+    if not data or "message" not in data: return "ok",200
+    m=data["message"]; chat=str(m["chat"]["id"]); from_id=str(m.get("from",{}).get("id",chat))
+    text=(m.get("text","") or m.get("caption","")).strip()
+    if not text: return "ok",200
+    is_owner=(chat==OWNER_ID or from_id==OWNER_ID)
+    low=text.lower()
+
+    if low.startswith("/start"):
+        msg="Welcome to my world Shadow King 👑 Mera Malik aa gaya! Bolo Malik kya hukm hai? Circle ON hai ♻️" if is_owner else "Welcome to my world. I am Rakan 👑 Bolo kya help chahiye?"
+        send_with_voice(chat, msg, "male")
+        return "ok",200
+
+    if any(x in low for x in ["kisne banaya","who made you"]):
+        send_with_voice(chat, "Mujhe mere Malik MD SAIF AHMAD THE SHADOW KING ne banaya hai 👑", "male")
+        return "ok",200
+
+    hist=upstash_get(f"chat:{chat}") or ""
+    ans=circle_brain(text, hist) or "Haan Malik bolo, sun raha hu, fresh mood me 👑"
+    vg="male"
+    send_with_voice(chat, ans, vg)
+    upstash_set(f"chat:{chat}", f"{hist}\nU:{text}\nA:{ans}")
+    return "ok",200
