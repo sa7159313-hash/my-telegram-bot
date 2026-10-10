@@ -137,7 +137,7 @@ def webhook():
     low=text.lower()
 
     if low.startswith("/start"):
-        msg="Welcome to my world Shadow King 👑 Mera Malik aa gaya! Bolo Malik kya hukm hai? Circle ON hai ♻️" if is_owner else "Welcome to my world. I am Rakan 👑 Bolo kya help chahiye?"
+        msg="Welcome to your world the Shadow King 👑 Mera Malik aa gaya! Bolo Malik kya hukm hai? Circle ON hai ♻️" if is_owner else "Welcome to my world. I am Rakan 👑 Bolo kya help chahiye?"
         send_with_voice(chat, msg, "male")
         return "ok",200
 
