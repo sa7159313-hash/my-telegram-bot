@@ -1,5 +1,4 @@
 Flask
 requests
-groq
 google-generativeai
-openai
+groq
