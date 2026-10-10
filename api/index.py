@@ -1,4 +1,4 @@
-import os, time, requests, json, urllib.parse, random
+import os, time, requests, urllib.parse, random
 from flask import Flask, request
 app = Flask(__name__)
 
@@ -24,7 +24,7 @@ FEMALE_VOICE = (os.environ.get("ELEVEN_FEMALE_VOICE") or "EXAVITQu4vr4xnSDxMaL")
 UPSTASH_URL = (os.environ.get("UPSTASH_REDIS_REST_URL") or "").strip().rstrip("/")
 UPSTASH_TOKEN = (os.environ.get("UPSTASH_REDIS_REST_TOKEN") or "").strip()
 
-print(f"### V125 ANTI-LOOP ### GROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} OPEN:{len(OPENAI_KEYS)}")
+print(f"### V126 VOICE-SWAP FIXED ### GROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} OPEN:{len(OPENAI_KEYS)}")
 
 BASE_LORE = """
 You are Shadow Monarch Rakan - THE BEAST MONARCH 👑. Loyal, powerful, protective to Owner.
@@ -32,7 +32,7 @@ You are ONLY RAKAN. NOT Meta AI.
 LANGUAGE RULE: ALWAYS reply in Hinglish Roman only (like 'Haan Malik bolo'). NEVER Devanagari.
 STYLE RULE: Never repeat same dialogue. Be fresh every time. Do NOT add NKD 7STAR in every reply, only sometimes when hype needed.
 Owner: MD SAIF AHMAD THE SHADOW KING DOB:1-6-2002 Queen:Theodore Made:28 Sep 7AM
-RULE: No hacking, no spam, no porn. 100% loyal to Malik. If user says 'alag bolo' then change topic/style completely.
+RULE: No hacking, no spam, no porn. 100% loyal to Malik.
 """
 
 def upstash_get(k):
@@ -42,6 +42,7 @@ def upstash_get(k):
         if r.status_code==200: return r.json().get("result")
     except: pass
     return None
+
 def upstash_set(k,v):
     try:
         if not UPSTASH_URL or not UPSTASH_TOKEN: return
@@ -53,12 +54,22 @@ BAD_KEYS={}
 def is_bad(k): return k in BAD_KEYS and time.time()-BAD_KEYS[k] < 600
 def mark_bad(k): BAD_KEYS[k]=time.time()
 
+def detect_voice_intent(text):
+    low = text.lower()
+    female_keys = ["ladki ki voice","ladki voice","female voice","girl voice","ladki ki awaz","ladki me","girl ki awaz","voice change","voice to change","female me bolo","ladki me bolo","ladki me msg"]
+    male_keys = ["ladke ki voice","ladka voice","male voice","boy voice","beast voice","mard ki awaz","male me bolo","ladke me bolo"]
+    for k in female_keys:
+        if k in low: return "female"
+    for k in male_keys:
+        if k in low: return "male"
+    return None
+
 def send_with_voice(chat_id, text, vg="male"):
     try:
         requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":text[:4096]}, timeout=10)
     except: pass
     if not ELEVEN_KEY: return
-    vid = MALE_VOICE if vg=="male" else FEMALE_VOICE
+    vid = FEMALE_VOICE if vg=="female" else MALE_VOICE
     try:
         vr=requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/{vid}",
             headers={"xi-api-key":ELEVEN_KEY,"Content-Type":"application/json"},
@@ -105,9 +116,8 @@ def ask_openai(p, key):
     return None
 
 def circle_brain(text, hist=""):
-    # Anti-loop prompt
-    variety = random.choice(["funny style","short powerful style","question puch ke","story style","domination nahi, respect wala"])
-    prompt = f"History:\n{hist[-2000:]}\n\nUser current msg: {text}\n\nInstruction: Reply in Hinglish Roman, {variety} me. Last reply ko repeat mat karna. Agar user 'alag bolo' bole to ekdum alag angle se baat kar. No Devanagari."
+    variety = random.choice(["funny style","short powerful style","question puch ke","story style","respect wala"])
+    prompt = f"History:\n{hist[-2000:]}\n\nUser current msg: {text}\n\nInstruction: Reply in Hinglish Roman, {variety} me. Last reply ko repeat mat karna. No Devanagari."
     max_len = max(len(GROQ_KEYS), len(GEMINI_KEYS), len(OPENAI_KEYS), 1)
     for i in range(max_len):
         if i < len(GROQ_KEYS):
@@ -123,7 +133,7 @@ def circle_brain(text, hist=""):
 
 @app.route("/", methods=["GET"])
 def home():
-    return f"V125 ANTI-LOOP 👑 GROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} OPEN:{len(OPENAI_KEYS)}",200
+    return f"V126 VOICE-SWAP FIXED 👑 GROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} OPEN:{len(OPENAI_KEYS)}",200
 
 @app.route("/api", methods=["POST"])
 @app.route("/api/index", methods=["POST"])
@@ -132,12 +142,13 @@ def webhook():
     if not data or "message" not in data: return "ok",200
     m=data["message"]; chat=str(m["chat"]["id"]); from_id=str(m.get("from",{}).get("id",chat))
     text=(m.get("text","") or m.get("caption","")).strip()
+    first=m.get("from",{}).get("first_name","")
     if not text: return "ok",200
     is_owner=(chat==OWNER_ID or from_id==OWNER_ID)
     low=text.lower()
 
     if low.startswith("/start"):
-        msg="Welcome to your world the Shadow King 👑 Mera Malik aa gaya! Bolo Malik kya hukm hai? Circle ON hai ♻️" if is_owner else "Welcome to my world. I am Rakan 👑 Bolo kya help chahiye?"
+        msg="Welcome to my world Shadow King 👑 Mera Malik aa gaya! Bolo Malik kya hukm hai? Circle ON hai ♻️" if is_owner else "Welcome to my world. I am Rakan 👑"
         send_with_voice(chat, msg, "male")
         return "ok",200
 
@@ -146,8 +157,17 @@ def webhook():
         return "ok",200
 
     hist=upstash_get(f"chat:{chat}") or ""
-    ans=circle_brain(text, hist) or "Haan Malik bolo, sun raha hu, fresh mood me 👑"
-    vg="male"
+
+    # VOICE LOGIC FIXED HERE
+    intent = detect_voice_intent(text)
+    saved_voice = upstash_get(f"voice:{chat}")
+    if intent:
+        vg = intent
+        upstash_set(f"voice:{chat}", vg) # save preference
+    else:
+        vg = saved_voice if saved_voice in ["male","female"] else "male"
+
+    ans=circle_brain(text, hist) or "Haan Malik bolo, sun raha hu 👑"
     send_with_voice(chat, ans, vg)
     upstash_set(f"chat:{chat}", f"{hist}\nU:{text}\nA:{ans}")
     return "ok",200
