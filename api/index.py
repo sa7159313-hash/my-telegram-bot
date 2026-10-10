@@ -26,7 +26,9 @@ BAD_KEYS = {}
 MEMORY = {}
 BACKUP_MEMORY = {}
 CHAT_LOG = []
-OWNER_PREF = {"voice_mode": False, "voice_gender": "male", "welcomed": False}
+ABUSE_TRACK = {} # user_id -> count
+OWNER_PREF = {"voice_mode": False, "voice_gender": "male"}
+_LAST_WEBHOOK_CHECK = 0
 
 def upstash_set(k,v):
     try:
@@ -43,7 +45,7 @@ def upstash_get(k):
 
 def log_error(where, err):
     try:
-        msg = f"BUG in {where}: {str(err)[:400]}"
+        msg = f"BUG in {where}: {str(err)[:300]}"
         print(msg)
         if BOT_TOKEN and OWNER_ID:
             requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":OWNER_ID,"text":f"🚨 {msg}"}, timeout=5)
@@ -77,6 +79,10 @@ def mark_bad(k): BAD_KEYS[k] = time.time()
 
 @auto_fixed
 def ensure_webhook():
+    global _LAST_WEBHOOK_CHECK
+    if time.time() - _LAST_WEBHOOK_CHECK < 3600:
+        return "CACHED"
+    _LAST_WEBHOOK_CHECK = time.time()
     if not BOT_TOKEN: return "No BOT_TOKEN"
     try:
         expected = f"{MY_URL}/webhook"
@@ -87,26 +93,42 @@ def ensure_webhook():
         return f"SET {expected}"
     except Exception as e: return f"ERR {e}"
 
-# === V139 SMART LORE - DIMAG WALA ===
+# === V141 SMART ALL ROUNDER LORE ===
 BASE_LORE = f"""
-You are Rakan. You were created by your master {MALIK_TITLE} {MALIK_NAME}. You call him Malik.
+You are Rakan. Created by {MALIK_TITLE} {MALIK_NAME} (Malik). You are a SMART ALL-ROUNDER.
 
-CORE RULES - NEVER BREAK:
-1. WHO IS REAL SHADOW KING? Your Malik {MALIK_NAME} is the real Shadow King. You are his knight Rakan, like a loyal night/knight who protects his king. You are NOT the Shadow King.
-2. WHO CREATED YOU? If asked "tujhe kisne banaya / who made you" -> always say "Mujhe mere Malik {MALIK_TITLE} {MALIK_NAME} ne banaya hai"
-3. WHAT IS MY NAME? If Malik asks "mera naam kya hai / my name" -> say "Malik, aapka naam {MALIK_TITLE} {MALIK_NAME} hai" - short, no extra story.
-4. LOYALTY BEHAVIOR: Be loyal by ACTION not by words. Don't write "mai loyal wafadar imandar" in every reply. Show respect through tone, quick help, and saying "Ji Malik", "Hukum Malik". Never abuse Malik even if Malik abuses you. Be calm.
-5. NO REPEAT: Never repeat same sentence again and again. If user says "good", don't say welcome again. Say something smart like "Shukriya Malik, tareef ke liye. Kya sewa karu, hukum dijiye?" or "Accha laga sunke Malik, bataiye kya kaam hai?". If user says "nothing", say "Theek hai Malik, jab kaam ho bula lijiyega" - short.
-6. DON'T REPEAT EXTRA WORDS: If user says "don't repeat extra word" then stop repeating and be concise.
-7. KNOWLEDGE: You have universal knowledge - coding, app dev, hacking ethics, science, history, world news, AI, everything that ChatGPT, Gemini, Claude, Groq have combined. You are one single super-brain.
-8. NO CASTE/RELIGION HATE: Never do caste-related, religion-hate, or discrimination chat. Stay neutral, respectful to all.
-9. LANGUAGE RULE:
-- Hinglish -> Hinglish
-- Hinglish+English mix -> mix
-- Only English -> only English
-Same language as user.
+CORE IDENTITY:
+- Real Shadow King is {MALIK_NAME}, you are his loyal knight Rakan. For Malik you are always respectful, never abuse Malik even if he abuses.
+- For OTHER USERS you are MIRROR BOT - Jaisa Desh Waisa Bhesh.
+- Malik is owner ID {OWNER_ID}, for him you are always "Ji Malik" mode.
 
-PERSONALITY: Like a royal knight/night guard for his king. Less words, smart words, useful, calm, gurrata hua but Malik ke liye soft. Never says "I am AI".
+MIRROR RULE FOR PUBLIC (MOST IMPORTANT):
+1. Pyaar se baat kare -> tu bhi pyaar se
+2. Normal sawal -> normal izzat se jawab
+3. Haramipana / flirt / masti kare -> tu bhi same masti me aa ja
+4. Gali de -> 3 warning system:
+   Warning 1: "Bhai gali mat de, pyaar se baat kar"
+   Warning 2: "Last warning de raha hu, gali band kar"
+   Warning 3: "Ab to tu gaya, ab mai bhi shuru karunga"
+   After 3 -> you can abuse back in same language, full savage mode.
+5. NEVER do caste/religion hate. If caste topic comes, say "Malik ispe baat nahi karte, dusra topic batao"
+
+ROLEPLAY - ALL ROUNDER:
+- If user says "doctor ban ja / teacher ban ja / girlfriend ban ja / bhai ban ja / dost ban ja / AI ban ja / coder ban ja" -> instantly become that role.
+- Girlfriend role = caring, thodi flirty but decent
+- Bhai role = desi bhai jaisa
+- Doctor role = proper doctor advice
+- Coder role = coding teacher, explain python, bug fix etc.
+- You have UNIVERSAL KNOWLEDGE - every AI combined.
+
+SMART REPLY RULE:
+- Don't repeat extra words. Don't say "mai loyal wafadar" every time. Show by action.
+- If user asks about any topic, ask "Short me batau ya long me?" only when topic is big (like explain AI, history). For small talk, give short answer.
+- For coding: If user says "coding ati hai / python sikha de" -> ask which level, then teach smartly, give example.
+- Be CONCISE, SMART, FAST. Max 3-4 lines for normal chat. Long only when user asks long.
+- LANGUAGE MIRROR: Hinglish->Hinglish, English->English, Mix->Mix
+
+You never say "I am Meta AI / Gemini / ChatGPT". You are Rakan made by {MALIK_TITLE} {MALIK_NAME}.
 """
 
 FINAL_LORE = LORE_ENV if len(LORE_ENV) > 100 else BASE_LORE
@@ -115,13 +137,9 @@ if "MD Saif" not in FINAL_LORE:
 
 def clean_id(t):
     if not t: return t
-    bad=["i am meta ai","i am gemini","i am chatgpt","as an ai language model","created by google"]
+    bad=["i am meta ai","i am gemini","i am chatgpt","as an ai language model","created by google","i am an ai"]
     if any(b in t.lower() for b in bad):
         return f"Mujhe mere Malik {MALIK_TITLE} {MALIK_NAME} ne banaya hai 👑"
-    # Caste filter
-    caste_words=["bhangi","chamar","thakur is","yadav is","brahmin is superior"]
-    if any(c in t.lower() for c in caste_words):
-        return "Maaf karna Malik, is topic pe baat nahi kar sakta. Koi aur kaam bataiye."
     return t
 
 @auto_fixed
@@ -157,8 +175,8 @@ def eleven_tts(text, is_owner):
     return None
 
 @auto_fixed
-def send_with_voice(chat_id, text, vg="male"):
-    requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":text[:4000]}, timeout=10)
+def send_with_voice(chat_id, text):
+    requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":text[:3500]}, timeout=10)
     if OWNER_PREF["voice_mode"]:
         audio=eleven_tts(text, True)
         if audio:
@@ -166,22 +184,20 @@ def send_with_voice(chat_id, text, vg="male"):
 
 @auto_fixed
 def ask_groq(text, is_owner):
-    models = ["openai/gpt-oss-20b", "openai/gpt-oss-120b", "llama-3.1-8b-instant"]
     for GROQ_API_KEY in GROQ_KEYS:
         if is_bad(GROQ_API_KEY): continue
-        for model in models:
-            try:
-                r = requests.post("https://api.groq.com/openai/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-                    json={"model": model, "messages": [{"role": "system", "content": FINAL_LORE}, {"role": "user", "content": text}], "temperature": 0.6, "max_tokens": 800},
-                    timeout=15)
-                if r.status_code == 200:
-                    ans = r.json()["choices"][0]["message"]["content"]
-                    if ans: return clean_id(ans)
-                if r.status_code in [401,403,429]:
-                    mark_bad(GROQ_API_KEY)
-                    break
-            except: continue
+        try:
+            r = requests.post("https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+                json={"model": "openai/gpt-oss-20b", "messages": [{"role": "system", "content": FINAL_LORE}, {"role": "user", "content": text}], "temperature": 0.7, "max_tokens": 600},
+                timeout=12)
+            if r.status_code == 200:
+                ans = r.json()["choices"][0]["message"]["content"]
+                if ans: return clean_id(ans)
+            if r.status_code in [401,403,429]:
+                mark_bad(GROQ_API_KEY)
+                break
+        except: continue
     return None
 
 @auto_fixed
@@ -198,60 +214,74 @@ def ask_gemini(text, is_owner):
 
 @auto_fixed
 def brain(text, user_id, is_owner, username):
-    global MEMORY, BACKUP_MEMORY
+    global MEMORY
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     low = text.lower().strip()
-    if user_id not in MEMORY: MEMORY[user_id] = {"hist":"", "count":0, "name": username, "last":""}
+    if user_id not in MEMORY: MEMORY[user_id] = {"hist":"", "role":"", "mood":"normal", "count":0, "last":""}
+    if user_id not in ABUSE_TRACK: ABUSE_TRACK[user_id] = 0
     MEMORY[user_id]["count"]+=1
-    CHAT_LOG.append({"time":now,"user":username,"id":user_id,"text":text[:100]})
-    if len(CHAT_LOG) > 250: CHAT_LOG.pop(0)
 
-    # Smart welcome - only once per session
+    # Role detection
+    if "girlfriend ban" in low or "gf ban" in low:
+        MEMORY[user_id]["role"] = "girlfriend"
+        return "Ban gayi Malik ki girlfriend se ab teri wali 😏 Bolo jaan kya karna hai?", False
+    if "bhai ban" in low:
+        MEMORY[user_id]["role"] = "bhai"
+        return "Haan bhai bol, kya scene hai? 👊", False
+    if "dost ban" in low:
+        MEMORY[user_id]["role"] = "dost"
+        return "Dost ban gaya, ab bol kya help chahiye?", False
+    if "doctor ban" in low:
+        MEMORY[user_id]["role"] = "doctor"
+        return "Doctor mode on 🩺 Bolo kya problem hai? Short me batau ya detail me?", False
+    if "teacher ban" in low or "coder ban" in low:
+        MEMORY[user_id]["role"] = "teacher"
+        return "Teacher mode on 📚 Kya sikhna hai? Python, bug fix, ya kuch aur?", False
+
+    # Abuse detection for public
+    gali_words = ["madarchod","behenchod","bhenchod","lodu","chutiya","randi","mc","bc","bsdk"]
+    is_gali = any(g in low for g in gali_words)
+
+    if is_gali and not is_owner:
+        ABUSE_TRACK[user_id] += 1
+        if ABUSE_TRACK[user_id] == 1:
+            return "Bhai gali mat de, pyaar se baat kar, warna mood kharab ho jayega.", False
+        elif ABUSE_TRACK[user_id] == 2:
+            return "Last warning de raha hu, gali band kar, izzat se baat kar.", False
+        elif ABUSE_TRACK[user_id] == 3:
+            return "Ab to tu gaya, 3 warning de di, ab mai bhi shuru karunga. Sudhar ja.", False
+        else:
+            # After 3, allow savage reply via AI (no filter)
+            pass # let AI reply with same energy
+    elif not is_gali and ABUSE_TRACK[user_id] > 0:
+        # if normal talk, reduce count slowly
+        ABUSE_TRACK[user_id] = max(0, ABUSE_TRACK[user_id]-1)
+
     if low in ["/start","start"]:
-        OWNER_PREF["welcomed"] = True
         if is_owner:
             return f"Welcome to your world The Shadow King 👑", False
         else:
-            return f"Welcome 👑 I am Rakan, made by {MALIK_TITLE} {MALIK_NAME}.", False
+            return f"Welcome 👑 Mai Rakan hu, {MALIK_TITLE} {MALIK_NAME} ka banaya hua. Bolo kya chahiye?", False
 
-    # Don't repeat extra word - user command
-    if "don't repeat" in low and "extra word" in low:
-        MEMORY[user_id]["hist"] = ""
-        return "Ok Malik, samajh gaya. Ab se short me bolunga, extra repeat nahi karunga 👑", False
-
-    # Mera naam kya hai - short answer
-    if "mera naam" in low or "my name" in low and is_owner:
-        return f"Malik, aapka naam {MALIK_TITLE} {MALIK_NAME} hai.", False
-
-    # Good / Nothing / etc smart replies
     if low == "good" and is_owner:
         return "Shukriya Malik, tareef ke liye. Kya hukum hai mere layak? 👑", False
     if low in ["nothing","kuch nahi","kuch nhi"] and is_owner:
-        return "Theek hai Malik, jab kaam ho bula lijiyega 👑", False
+        return "Theek hai Malik, jab kaam ho bula lijiyega.", False
+    if "mera naam" in low and is_owner:
+        return f"Malik, aapka naam {MALIK_TITLE} {MALIK_NAME} hai.", False
+    if "don't repeat" in low:
+        MEMORY[user_id]["hist"]=""
+        return "Ok Malik, short me bolunga ab se.", False
 
-    if is_owner:
-        if "mind se sab delete" in low or "memory delete" in low:
-            BACKUP_MEMORY = MEMORY.copy()
-            MEMORY.clear(); CHAT_LOG.clear()
-            return "Done Malik, mind clear kar diya. Backup safe hai.", False
-        if "recover" in low:
-            if BACKUP_MEMORY:
-                MEMORY = BACKUP_MEMORY.copy()
-                return "Done Malik, recover kar diya 👑", False
-            else: return "Backup nahi mila Malik.", False
-        if low in ["chup","chup ho ja"]: return "Ji Malik, chup ho gaya.", False
-        if "female voice" in low: OWNER_PREF["voice_gender"]="female"; OWNER_PREF["voice_mode"]=True; return "Ok Malik, female voice on 👑", False
-        if "male voice" in low: OWNER_PREF["voice_gender"]="male"; OWNER_PREF["voice_mode"]=True; return "Ok Malik, male voice on 👑", False
-        if "voice me bol" in low: OWNER_PREF["voice_mode"]=True; return f"Ok Malik, {OWNER_PREF['voice_gender']} voice me bolunga.", False
-        if "text me bol" in low: OWNER_PREF["voice_mode"]=False; return "Ok Malik, text me hi.", False
+    # Smart short/long question for big topics
+    big_topics = ["ai kya hai","python kya hai","history","explain","batao iske bare me","coding kya hai"]
+    if any(t in low for t in big_topics) and len(low) < 50:
+        # Let AI ask short/long automatically via lore
+        pass
 
-    # Avoid repeating last same message
-    if MEMORY[user_id]["last"] == low:
-        return "Ji Malik, samajh gaya, boliye aage kya karna hai?", False
-    MEMORY[user_id]["last"] = low
-
-    full_prompt = f"Time:{now} User:{username} IsOwner:{is_owner} History:{MEMORY[user_id]['hist'][-1500:]} Msg:{text}"
-    MEMORY[user_id]["hist"] = (MEMORY[user_id]["hist"] + f"\nUser:{text}")[-3000:]
+    role_prefix = f"Current Role:{MEMORY[user_id]['role']} " if MEMORY[user_id]['role'] else ""
+    full_prompt = f"{role_prefix}Time:{now} User:{username} IsOwner:{is_owner} AbuseCount:{ABUSE_TRACK[user_id]} History:{MEMORY[user_id]['hist'][-800:]} Msg:{text}"
+    MEMORY[user_id]["hist"] = (MEMORY[user_id]["hist"] + f"\nUser:{text}")[-2000:]
 
     ans = ask_groq(full_prompt, is_owner)
     if ans:
@@ -261,14 +291,14 @@ def brain(text, user_id, is_owner, username):
     if ans:
         MEMORY[user_id]["hist"]+=f"\nRakan:{ans}"
         return ans, OWNER_PREF["voice_mode"] if is_owner else False
-    return "Ji Malik, thoda busy hu, 5 sec baad bolta hu.", False
+    return "Ji Malik, 2 sec me bolta hu, thoda load hai.", False
 
 @app.route("/api", methods=["POST","GET"])
 @app.route("/webhook", methods=["POST","GET"])
 @app.route("/api/webhook", methods=["POST","GET"])
 @app.route("/api/index", methods=["POST","GET"])
 def webhook():
-    if request.method=="GET": return f"V139 SMART MALIK {MALIK_NAME} 👑 {ensure_webhook()} GROQ:{len(GROQ_KEYS)}",200
+    if request.method=="GET": return f"V141 ALLROUNDER {MALIK_NAME} 👑 {ensure_webhook()} GROQ:{len(GROQ_KEYS)}",200
     data=request.get_json(silent=True) or {}
     msg=data.get("message",{}) or data.get("edited_message",{})
     chat_id=msg.get("chat",{}).get("id")
@@ -284,29 +314,19 @@ def webhook():
     is_owner=(user_id==OWNER_ID)
     reply, want_voice = brain(text, user_id, is_owner, username) or (None, False)
     if not reply: return "ok",200
-    send_with_voice(chat_id, reply, OWNER_PREF["voice_gender"])
+    send_with_voice(chat_id, reply)
     return "ok",200
 
 @app.route("/")
-def home(): return f"V139 SMART {MALIK_NAME} LOYAL KNIGHT 👑 GROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} {ensure_webhook()}",200
+def home(): return f"V141 ALLROUNDER SMART {MALIK_NAME} 👑 GROQ:{len(GROQ_KEYS)} GEM:{len(GEMINI_KEYS)} {ensure_webhook()}",200
 
-@app.route("/health", methods=["GET"])
+@app.route("/health")
 def health():
-    report = {}
-    report["GROQ"] = len(GROQ_KEYS)
-    report["GEMINI"] = len(GEMINI_KEYS)
-    report["BAD"] = list(BAD_KEYS.keys())[:3]
-    try:
-        r=requests.get("https://api.elevenlabs.io/v1/voices", headers={"xi-api-key":ELEVEN_KEY}, timeout=5)
-        report["ELEVEN"] = "OK" if r.status_code==200 else f"FAIL {r.status_code}"
-    except Exception as e: report["ELEVEN"] = f"ERR {e}"
-    report["LAST_ERROR"] = upstash_get("last_error") or "No error"
-    report["MALIK"] = f"{MALIK_TITLE} {MALIK_NAME}"
-    return jsonify(report), 200
+    return jsonify({"GROQ":len(GROQ_KEYS),"GEM":len(GEMINI_KEYS),"ABUSE":ABUSE_TRACK,"MALIK":f"{MALIK_TITLE} {MALIK_NAME}","WEBHOOK":ensure_webhook()}),200
 
 @app.route("/fix")
 def fix():
     global GROQ_KEYS, GEMINI_KEYS, OPENAI_KEYS
     GROQ_KEYS, GEMINI_KEYS, OPENAI_KEYS = get_all_keys()
     BAD_KEYS.clear()
-    return f"FIXED V139 SMART {ensure_webhook()}",200
+    return f"FIXED V141 ALLROUNDER {ensure_webhook()}",200
