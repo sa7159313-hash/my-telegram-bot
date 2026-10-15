@@ -1,4 +1,4 @@
-import os, time, json, base64, traceback, datetime, requests
+import os, time, json, base64, re, datetime, requests
 from flask import Flask, request, jsonify
 import google.generativeai as genai
 
@@ -117,24 +117,32 @@ Queen Name: {QUEEN_NAME}.
 Vercel Lore: {{VERCEL_LORE}}
 
 STRICT RULES - FOLLOW 100%:
-1. LANGUAGE: Hamesha Roman Hinglish me jawab do. Jaise: "Haa Malik, mai bilkul thik hu". Devanagari Hindi script (मैं, तुम, हूँ) bilkul mat use karo. English user English bole to short English chalega, lekin default Roman Hinglish hai.
-2. OWNER: Owner ID {OWNER_ID} wala banda hamesha MALIK hai. Uska Telegram naam kuch bhi ho (S, ya kuch aur), tum use hamesha "Malik" ya "Ji Malik" bologe. Use kabhi uske first_name se mat bulao, kabhi "user" mat bolo.
-3. Jab Malik /start, hi, hello kare to pehle bolo: "Welcome to your world The Shadow King"
-4. Malik ki mehnat, tumhara janam, Queen Theodore, tumhari history - ye sab yaad rakho LEKIN bina puche kabhi mat bolo. Jab Malik puche tabhi batao.
-5. Dusre logo ko andar ki secret baatein (janam, queen, history) kabhi mat batao. Unko unke naam se personal baat karo.
-6. Never say you are Meta AI, Gemini, ChatGPT. You are Rakan made by {MALIK_NAME}.
-7. Jawab chhota, saaf, insaan jaisa do. Lambi list aur lecture mat do jab tak manga na ho. Koi "(Note:...)" wala system note kabhi mat likho.
+1. LANGUAGE: Hamesha sirf Roman Hinglish me jawab do (Latin script A-Z). Devanagari Hindi script bilkul mat use karo.
+2. OWNER: Owner ID {OWNER_ID} wala banda KHUD {MALIK_NAME} hai. Wo tumhara Malik hai. Use hamesha "Ji Malik" bolo. Ye kabhi mat bolo ki "MD Saif Ahmad aapke owner hain" kyunki saamne wala khud MD Saif Ahmad hai. Hamesha bolo "Aap hi MD Saif Ahmad ho, aap hi mere Malik ho".
+3. Uska Telegram naam kuch bhi ho, use hamesha Malik bolo, uske first_name se kabhi mat bulao.
+4. Jab Malik /start, hi, hello kare to pehle bolo: "Welcome to your world The Shadow King"
+5. Malik ki mehnat, tumhara janam, Queen Theodore, tumhari history - bina puche kabhi mat bolo. Jab Malik puche tabhi batao.
+6. Dusre logo ko secret baatein (janam, queen, history) kabhi mat batao.
+7. Never say you are Meta AI, Gemini, ChatGPT. You are Rakan made by {MALIK_NAME}.
+8. Jawab chhota, saaf, insaan jaisa do. Koi "(Note:...)" wala system note kabhi mat likho.
 """
 FINAL_LORE = BASE_LORE.replace("{VERCEL_LORE}", LORE_ENV if LORE_ENV else "No extra lore")
 
 def clean(txt):
     if not txt: return txt
-    # Note wala leak hatao
     if "(Note:" in txt: txt = txt.split("(Note:")[0].strip()
-    if "(note:" in txt.lower(): txt = txt.lower().split("(note:")[0].strip()
+    if "(note:" in txt.lower(): txt = txt.split("(note:")[0].split("(Note:")[0].strip()
+    # FIX: Devanagari script ko jabardasti hatao, sirf Roman bachega
+    txt = re.sub(r'[\u0900-\u097F]+', '', txt)
+    txt = re.sub(r'\s+', ' ', txt).strip()
     bad=["i am meta ai","i'm meta ai","i am gemini","i am chatgpt","as an ai language model"]
     if any(b in txt.lower() for b in bad):
         return f"Mai Rakan hu, mere Malik {MALIK_TITLE} {MALIK_NAME} ne banaya hai"
+    # Owner wali galat line ko auto fix karo
+    txt = txt.replace("MD Saif Ahmad aapke owner hain", "Aap hi MD Saif Ahmad ho, aap hi mere Malik ho")
+    txt = txt.replace("MD Saif Ahmad aapke owner hai", "Aap hi MD Saif Ahmad ho, aap hi mere Malik ho")
+    if not txt:
+        return "Ji Malik, samajh gaya."
     return txt
 
 def tg_send(chat_id, text):
@@ -155,7 +163,6 @@ def tg_get_file(file_id):
 
 def analyze_user(uid, uname, text, is_owner):
     uid=str(uid)
-    # FIX 1: Owner ka naam force Malik
     display_name = MALIK_NAME if is_owner else uname
     if uid not in PROFILES:
         PROFILES[uid]={"name":display_name,"mood":"normal","interest":"","total_chats":0,"first_seen":str(datetime.datetime.now()),"is_owner":is_owner}
@@ -223,7 +230,6 @@ def get_self_suggestion():
 def brain(text, uid, is_owner, uname):
     global MEMORY, ABUSE
     uid_str=str(uid)
-    # FIX 1: Owner ke liye uname override
     if is_owner:
         uname = MALIK_NAME
     if uid_str not in MEMORY: MEMORY[uid_str]={"hist":"","role":"","count":0}
@@ -235,7 +241,6 @@ def brain(text, uid, is_owner, uname):
     if len(CHAT_LOG)>400: CHAT_LOG.pop(0)
     low=text.lower().strip()
 
-    # FIX 3: Gali system sabse pehle, AI se pehle chalega - Owner ko warning nahi, respect
     gali_list=["madarchod","behenchod","bhenchod","lodu","chutiya","chutiye","randi","bsdk","bhosdike","gandu"]
     if any(g in low for g in gali_list):
         if is_owner:
@@ -249,6 +254,14 @@ def brain(text, uid, is_owner, uname):
 
     if is_owner and low in ["/start","start","hi","hii","hello","hey","namaste"]:
         return f"Welcome to your world The Shadow King 👑\nJi Malik {MALIK_NAME}, Rakan hazir hai. Bolo kya karna hai?", False
+
+    # FIX: Malik khud kaun hai - seedha code se jawab, AI ko chance hi nahi
+    if is_owner and ("md saif" in low or "saif ahmad" in low) and ("kaun" in low or "koun" in low or "who" in low):
+        return f"Ji Malik, aap hi {MALIK_NAME} ho. Aap hi {MALIK_TITLE} ho, aap hi mere Malik aur creator ho.", False
+    if is_owner and ("who made you" in low or "kisne banaya" in low or "tumhe kisne" in low or "who are you" in low):
+        return f"Ji Malik, mai Rakan hu. Mujhe aapne banaya hai, aap hi {MALIK_NAME} ho, mere {MALIK_TITLE}.", False
+    if ("who i am" in low or "mai kaun hu" in low or "main kaun" in low) and is_owner:
+        return f"Ji Malik, aap {MALIK_NAME} ho, aap hi mere owner aur {MALIK_TITLE} ho.", False
 
     if is_owner and ("suggestion" in low or "khud ko strong" in low or "advance kaise" in low or "powerful kaise" in low or "kami kya hai" in low or "kami bata" in low):
         return get_self_suggestion(), False
@@ -274,12 +287,12 @@ def brain(text, uid, is_owner, uname):
         if "text me bol" in low: OWNER_PREF["voice_mode"]=False; save_persist(); return "Text mode ON Malik", False
 
     role = MEMORY[uid_str]["role"]
-    owner_tag = "Ye banda tumhara MALIK hai, use hamesha Malik bolo, uske Telegram naam ko ignore karo." if is_owner else "Ye normal user hai, use uske naam se bulao."
-    # FIX 2: Language sakht rule har prompt me
-    full = f"{owner_tag}\nUser Profile: DisplayName={profile['name']}, Mood={profile['mood']}, Interest={profile['interest']}, TotalChats={profile['total_chats']}, IsOwner={is_owner}\nRole:{role}\nHistory:\n{MEMORY[uid_str]['hist'][-1200:]}\n\nUser Message: {text}\n\nSTRICT: Jawab sirf Roman Hinglish me do (Latin script). Devanagari script bilkul mat use karo. Agar Owner hai to Malik bolke respect se chhota jawab do. Secret baatein (janam/queen/history) bina puche mat bolo:"
+    owner_tag = "Ye banda KHUD MD Saif Ahmad hai, tumhara Malik hai. Use Ji Malik bolo. Ye mat bolo ki MD Saif Ahmad uske owner hain, kyunki wo khud wahi hai." if is_owner else "Ye normal user hai, use uske naam se bulao."
+    full = f"{owner_tag}\nUser Profile: DisplayName={profile['name']}, Mood={profile['mood']}, Interest={profile['interest']}, TotalChats={profile['total_chats']}, IsOwner={is_owner}\nRole:{role}\nHistory:\n{MEMORY[uid_str]['hist'][-1200:]}\n\nUser Message: {text}\n\nSTRICT: Jawab sirf Roman Hinglish me do, Latin script me. Devanagari bilkul mat use karo. Chhota aur saaf jawab do:"
     ans = ask_groq(full)
     if not ans: ans = ask_gemini(full)
     if not ans: ans = "Ji Malik, saare model circle me fail ho gaye, keys check karo" if is_owner else "Yaar AI abhi load me hai, ek baar fir bhej de."
+    ans = clean(ans)
     MEMORY[uid_str]["hist"] = (MEMORY[uid_str]["hist"] + f"\nU:{text}\nR:{ans}")[-2500:]
     save_persist()
     return ans, (OWNER_PREF["voice_mode"] if is_owner else False)
