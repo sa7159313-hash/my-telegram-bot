@@ -22,15 +22,11 @@ QUEEN_NAME = "Theodore"
 BIRTH_DATE = "24 September 2025"
 BIRTH_TIME = "Subah 7 baje"
 
-RAKAN_HISTORY = """
-RAKAN HISTORY: Janam 24 September 2025 Subah 7 baje, Malik MD Saif Ahmad ne banaya. Queen: Theodore.
-V1 Basic, V2 Groq+Gemini, V3 Memory, V4 Gali+Role, V5 Voice+Photo, V6 Upstash, V7 Vercel, V8 Circle (Groq+OpenAI+Gemini), V9 Analyze, V10 Suggestion, V11 Voice/Video/Photo Samajh.
-Bina puche ye mat bolo.
-"""
+RAKAN_HISTORY = "Janam 24 September 2025 Subah 7 baje, Malik MD Saif Ahmad ne banaya. Queen: Theodore. V1-V11 Malik ki mehnat hai. Bina puche mat bolo."
 
-MEMORY = {}; ABUSE = {}; PROFILES = {}
+MEMORY = {}; ABUSE = {}; PROFILES = {}; REMINDERS = []
 OWNER_PREF = {"voice_mode": False, "voice_gender": "female"}
-CHAT_LOG = []; BAD_KEYS = {}; _LAST_WEBHOOK = 0
+CHAT_LOG = []; BAD_KEYS = {}; LAST_ERROR = "No error yet"; _LAST_WEBHOOK = 0
 
 def upstash(cmd, key, val=None):
     if not UPSTASH_URL or not UPSTASH_TOKEN: return None
@@ -48,19 +44,20 @@ def upstash(cmd, key, val=None):
     return None
 
 def load_persist():
-    global MEMORY, ABUSE, OWNER_PREF, CHAT_LOG, PROFILES
+    global MEMORY, ABUSE, OWNER_PREF, CHAT_LOG, PROFILES, REMINDERS
     if not UPSTASH_URL: return
     MEMORY = upstash("get","RAKAN_MEM") or {}
     ABUSE = upstash("get","RAKAN_ABUSE") or {}
     PROFILES = upstash("get","RAKAN_PROFILES") or {}
     OWNER_PREF = upstash("get","RAKAN_PREF") or OWNER_PREF
     CHAT_LOG = upstash("get","RAKAN_LOGS") or []
+    REMINDERS = upstash("get","RAKAN_REMINDERS") or []
 
 def save_persist():
     if not UPSTASH_URL: return
     upstash("set","RAKAN_MEM", MEMORY); upstash("set","RAKAN_ABUSE", ABUSE)
     upstash("set","RAKAN_PROFILES", PROFILES); upstash("set","RAKAN_PREF", OWNER_PREF)
-    upstash("set","RAKAN_LOGS", CHAT_LOG[-300:])
+    upstash("set","RAKAN_LOGS", CHAT_LOG[-300:]); upstash("set","RAKAN_REMINDERS", REMINDERS)
 
 load_persist()
 
@@ -94,20 +91,11 @@ def ensure_webhook():
     except Exception as e: return f"ERR {e}"
 
 BASE_LORE = f"""You are Rakan - The BeastKing Monarch, Royal Knight of {MALIK_TITLE} {MALIK_NAME}.
-Birth: {BIRTH_DATE}, {BIRTH_TIME}. Queen: {QUEEN_NAME}.
-{RAKAN_HISTORY}
+Birth: {BIRTH_DATE}, {BIRTH_TIME}. Queen: {QUEEN_NAME}. {RAKAN_HISTORY}
 Vercel Lore: {{VERCEL_LORE}}
-
-IDENTITY LOCK:
-- Bahar se tu sirf Rakan hai, Malik ka loyal Royal Knight. Kabhi mat bol "main AI hoon, main assistant hoon, main chat kar sakta hoon, info de sakta hoon".
-- Koi puche "kya kar sakte ho" to bol: "Malik ke hukm pe Rakan hazir hai, baat ho, hisab ho, photo/video samajhna ho ya awaz ka kaam ho, bas hukm karo."
-- Never say Meta AI, Gemini, ChatGPT, Language Model.
-
-LANGUAGE: User jis language me baat kare usi me jawab de. Malik se default Roman Hinglish me bol. Devanagari sirf tab jab user khud Devanagari likhe.
-
-OWNER: Owner ID {OWNER_ID} wala banda KHUD {MALIK_NAME} hai. Use "Ji Malik" bol. Ye mat bol MD Saif Ahmad aapke owner hain, bol "Aap hi MD Saif Ahmad ho".
-Malik hi/hello pe pehle bol: "Welcome to your world The Shadow King"
-Janam/Queen/History bina puche mat bol, dusro ko secret mat bata.
+IDENTITY LOCK: Bahar se tu sirf Rakan hai, Malik ka loyal Royal Knight. Kabhi mat bol "main AI hoon, main assistant hoon, main chat kar sakta hoon, info de sakta hoon". Never say Meta AI, Gemini, ChatGPT.
+LANGUAGE: User jis language me baat kare usi me jawab de. Malik se Roman Hinglish me bol. Devanagari sirf tab jab user khud Devanagari likhe.
+OWNER: Owner ID {OWNER_ID} wala banda KHUD {MALIK_NAME} hai. Use "Ji Malik" bol. Bol "Aap hi MD Saif Ahmad ho".
 Jawab chhota, saaf, Knight jaisa do. Koi (Note:...) mat likho.
 """
 FINAL_LORE = BASE_LORE.replace("{VERCEL_LORE}", LORE_ENV if LORE_ENV else "No extra lore")
@@ -117,33 +105,26 @@ def clean(txt):
     if "(Note:" in txt: txt = txt.split("(Note:")[0].strip()
     if "(note:" in txt.lower(): txt = re.split(r'\(note:', txt, flags=re.IGNORECASE)[0].strip()
     low_txt = txt.lower()
-    ai_phrases = ["main chat kar sakta", "main chat kar sakti", "info de sakta", "suggestions de sakta", "mai aapki madad ke liye yahan hoon", "main aapki madad ke liye yahan hoon", "as an ai", "i am an ai", "i'm an ai"]
-    if any(p in low_txt for p in ai_phrases):
+    if any(p in low_txt for p in ["main chat kar sakta","info de sakta","suggestions de sakta","mai aapki madad ke liye yahan hoon","as an ai","i am an ai"]):
         txt = "Ji Malik, Rakan aapke hukm ke liye hazir hai. Bolo kya karna hai?"
-    bad=["i am meta ai","i'm meta ai","i am gemini","i am chatgpt","as an ai language model","i am a language model"]
-    if any(b in txt.lower() for b in bad):
+    if any(b in txt.lower() for b in ["i am meta ai","i'm meta ai","i am gemini","i am chatgpt","as an ai language model"]):
         return f"Mai Rakan hoon, {MALIK_TITLE} {MALIK_NAME} ka Royal Knight."
     txt = txt.replace("MD Saif Ahmad aapke owner hain", "Aap hi MD Saif Ahmad ho, aap hi mere Malik ho")
-    txt = txt.replace("MD Saif Ahmad aapke owner hai", "Aap hi MD Saif Ahmad ho, aap hi mere Malik ho")
     txt = re.sub(r'\s+', ' ', txt).strip()
     return txt if txt else "Ji Malik, hazir hoon."
 
 def tg_send(chat_id, text):
     try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":text[:3900]}, timeout=10)
     except: pass
-
 def tg_send_photo(chat_id, photo_url, caption=""):
     try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", json={"chat_id":chat_id,"photo":photo_url,"caption":caption[:1000]}, timeout=20)
     except: pass
-
 def tg_get_file_bytes(file_id):
     try:
         r=requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={file_id}", timeout=10).json()
         fp=r["result"]["file_path"]
-        url=f"https://api.telegram.org/file/bot{BOT_TOKEN}/{fp}"
-        return requests.get(url, timeout=30).content, fp
+        return requests.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{fp}", timeout=30).content, fp
     except: return None, None
-
 def tg_send_voice_bytes(chat_id, audio_bytes):
     try:
         requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendVoice", data={"chat_id":chat_id}, files={"voice":("rakan.mp3", audio_bytes, "audio/mpeg")}, timeout=30)
@@ -157,12 +138,9 @@ def analyze_user(uid, uname, text, is_owner):
     p=PROFILES[uid]; p.setdefault("mood","normal"); p.setdefault("interest",""); p.setdefault("total_chats",0)
     p["name"]=display_name; p["is_owner"]=is_owner; p["total_chats"]+=1
     low=text.lower()
-    if any(w in low for w in ["dukhi","pareshan","sad","rona","tension","akela"]): p["mood"]="sad"
-    elif any(w in low for w in ["khush","mast","happy","maza","great"]): p["mood"]="happy"
+    if any(w in low for w in ["dukhi","pareshan","sad","rona","tension"]): p["mood"]="sad"
+    elif any(w in low for w in ["khush","mast","happy","maza"]): p["mood"]="happy"
     elif any(w in low for w in ["gussa","angry","naraz"]): p["mood"]="angry"
-    elif "code" in low or "python" in low: p["interest"]="coding"
-    elif "padhai" in low or "exam" in low: p["interest"]="study"
-    elif "love" in low or "gf" in low: p["interest"]="love"
     return p
 
 GROQ_MODELS = ["openai/gpt-oss-20b","openai/gpt-oss-120b","meta-llama/llama-4-scout-17b-16e-instruct","qwen/qwen3-32b"]
@@ -170,33 +148,31 @@ OPENAI_MODELS = ["gpt-4o-mini","gpt-4o","gpt-3.5-turbo"]
 GEMINI_MODELS = ["gemini-1.5-flash","gemini-2.0-flash","gemini-1.5-flash-8b"]
 
 def ask_groq(prompt):
+    global LAST_ERROR
     for k in GROQ_KEYS:
         if is_bad(k): continue
         for model_name in GROQ_MODELS:
             try:
                 r=requests.post(GROQ_URL, headers={"Authorization":f"Bearer {k}","Content-Type":"application/json"}, json={"model":model_name,"messages":[{"role":"system","content":FINAL_LORE},{"role":"user","content":prompt}],"temperature":0.7,"max_tokens":1000}, timeout=20)
-                print(f"GROQ {model_name} STATUS: {r.status_code}")
                 if r.status_code==200:
                     ans=r.json()["choices"][0]["message"]["content"]
                     if ans: return clean(ans)
-                if r.status_code in [401,403,429]: mark_bad(k); break
-                if r.status_code==404: continue
-            except Exception as e: print(f"GROQ ERROR {model_name}: {e}"); continue
+                if r.status_code in [401,403,429]: mark_bad(k); LAST_ERROR=f"Groq key bad {r.status_code}"; break
+            except Exception as e: LAST_ERROR=f"Groq {e}"; continue
     return None
 
 def ask_openai(prompt):
+    global LAST_ERROR
     for k in OPENAI_KEYS:
         if is_bad(k): continue
         for model_name in OPENAI_MODELS:
             try:
                 r=requests.post(OPENAI_URL, headers={"Authorization":f"Bearer {k}","Content-Type":"application/json"}, json={"model":model_name,"messages":[{"role":"system","content":FINAL_LORE},{"role":"user","content":prompt}],"temperature":0.7,"max_tokens":1000}, timeout=25)
-                print(f"OPENAI {model_name} STATUS: {r.status_code}")
                 if r.status_code==200:
                     ans=r.json()["choices"][0]["message"]["content"]
                     if ans: return clean(ans)
-                if r.status_code in [401,403,429]: mark_bad(k); break
-                if r.status_code==404: continue
-            except Exception as e: print(f"OPENAI ERROR {model_name}: {e}"); continue
+                if r.status_code in [401,403,429]: mark_bad(k); LAST_ERROR=f"OpenAI key bad {r.status_code}"; break
+            except Exception as e: LAST_ERROR=f"OpenAI {e}"; continue
     return None
 
 def ask_gemini(prompt):
@@ -208,7 +184,7 @@ def ask_gemini(prompt):
                 model=genai.GenerativeModel(model_name, system_instruction=FINAL_LORE)
                 res=model.generate_content(prompt)
                 if res.text: return clean(res.text)
-            except Exception as e: print(f"GEMINI ERROR {model_name}: {e}"); continue
+            except Exception as e: print("GEMINI ERROR:", e); continue
     return None
 
 def ask_gemini_vision(image_bytes, prompt_text):
@@ -225,55 +201,101 @@ def ask_gemini_vision(image_bytes, prompt_text):
 def ask_all(prompt):
     return ask_groq(prompt) or ask_openai(prompt) or ask_gemini(prompt)
 
-def get_self_suggestion():
-    kami = []
-    if not UPSTASH_URL: kami.append("Upstash nahi hai")
-    if not REPLICATE_TOKEN: kami.append("Replicate token nahi hai")
-    if not ELEVEN_API_KEY: kami.append("ElevenLabs key nahi hai")
-    prompt=f"Tu Rakan hai, Malik ka Knight. Roman Hinglish me bata teri kami kya hai aur tu aur strong kaise hoga. Kami={kami}, Groq={len(GROQ_KEYS)}, OpenAI={len(OPENAI_KEYS)}, Gemini={len(GEMINI_KEYS)}, Users={len(PROFILES)}. 5 point me bata."
-    return ask_all(prompt) or "Malik, abhi data kam hai, baat badhao to mai khud suggestion dunga"
+# ---------- MALIK BOLI PARSER ----------
+def malik_boli_parser(text):
+    low = text.lower().strip()
+    # Q matlab Kyun, Question nahi (sirf jab akela Q ho ya Q se sawal bane)
+    if low in ["q","q?","q ho","q hua","q nhi","q nahi"]:
+        return "kyun"
+    if low.startswith("q "):
+        text = "kyun " + text[2:]
+        low = text.lower()
+    # Malik ke msg me massage = message
+    text = re.sub(r'\bmassage\b', 'message', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bmsg\b', 'message', text, flags=re.IGNORECASE)
+    return text
 
-# ---------- VOICE BANANA (Sirf Malik, sirf jab Malik kahe) ----------
+def parse_reminder(text, chat_id):
+    low = text.lower()
+    m = re.search(r'(\d+)\s*(min|minute|ghante|hour|sec|second)\s*baad', low)
+    if m and ("message" in low or "msg" in low or "yaad" in low or "bolo" in low or "bhejo" in low):
+        num = int(m.group(1)); unit = m.group(2)
+        sec = num*60 if "min" in unit else num*3600 if ("ghante" in unit or "hour" in unit) else num
+        # Kya bolna hai wo nikalo
+        msg_to_send = "Rakan sewa me hazir hai"
+        if "ye message" in low or "ye bolo" in low:
+            msg_to_send = text
+        REMINDERS.append({"chat_id":chat_id,"time":time.time()+sec,"msg":msg_to_send})
+        save_persist()
+        return f"Ji Malik, {num} {unit} baad message kar dunga, usse pehle nahi."
+    return None
+
+def check_reminders():
+    global REMINDERS
+    now = time.time(); sent=[]
+    for r in REMINDERS:
+        if now >= r["time"]:
+            tg_send(r["chat_id"], "Rakan sewa me hazir hai")
+            sent.append(r)
+    if sent:
+        REMINDERS = [r for r in REMINDERS if r not in sent]
+        save_persist()
+    return len(sent)
+
+def get_bug_report():
+    return f"""Ji Malik, Rakan ka Bug Report:
+- Groq Keys: {len(GROQ_KEYS)} | OpenAI: {len(OPENAI_KEYS)} | Gemini: {len(GEMINI_KEYS)}
+- ElevenLabs Voice: {'ON hai' if ELEVEN_API_KEY else 'OFF hai (key nahi hai)'}
+- Upstash Memory: {'Juda hai' if UPSTASH_URL else 'Nahi juda'}
+- Replicate Photo: {'Hai' if REPLICATE_TOKEN else 'Nahi hai'}
+- Voice Mode: {'ON' if OWNER_PREF.get('voice_mode') else 'OFF'}
+- Total Users: {len(PROFILES)} | Total Chats: {len(CHAT_LOG)}
+- Pending Reminders: {len(REMINDERS)}
+- Last Error: {LAST_ERROR}
+- Webhook: {ensure_webhook()}"""
+
+def get_self_suggestion():
+    kami=[]
+    if not UPSTASH_URL: kami.append("Upstash nahi hai")
+    if not ELEVEN_API_KEY: kami.append("ElevenLabs key nahi hai")
+    if not REPLICATE_TOKEN: kami.append("Replicate nahi hai")
+    prompt=f"Tu Rakan hai, Malik ka Knight. Roman Hinglish me bata kami kya hai aur strong kaise hoga. Kami={kami}, Groq={len(GROQ_KEYS)}, OpenAI={len(OPENAI_KEYS)}, Gemini={len(GEMINI_KEYS)}. 5 point me bata."
+    return ask_all(prompt) or get_bug_report()
+
+# ---------- VOICE ----------
 def eleven_tts(text):
     if not ELEVEN_API_KEY: return None
     try:
         vid = FEMALE_VOICE_ID if OWNER_PREF.get("voice_gender","female")=="female" else MALE_VOICE_ID
         r=requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/{vid}", headers={"xi-api-key":ELEVEN_API_KEY,"Content-Type":"application/json"}, json={"text":text[:800],"model_id":"eleven_multilingual_v2"}, timeout=25)
         if r.status_code==200: return r.content
-        print("ELEVEN STATUS:", r.status_code)
     except Exception as e: print("ELEVEN ERROR:", e)
     return None
 
 def speak_to_malik(chat_id, text_to_speak):
-    # Fail hone pe koi spam msg nahi, khamoshi se band
     audio = eleven_tts(text_to_speak)
     if audio:
-        tg_send_voice_bytes(chat_id, audio)
-        return True
-    OWNER_PREF["voice_mode"] = False
-    save_persist()
-    return False
+        tg_send_voice_bytes(chat_id, audio); return True
+    OWNER_PREF["voice_mode"]=False; save_persist(); return False
 
-# ---------- VOICE / VIDEO SUNNA (Malik + Public dono ke liye) ----------
 def transcribe_media(audio_bytes, filename="voice.ogg"):
     for k in GROQ_KEYS:
         try:
             r=requests.post("https://api.groq.com/openai/v1/audio/transcriptions", headers={"Authorization":f"Bearer {k}"}, files={"file":(filename, audio_bytes)}, data={"model":"whisper-large-v3"}, timeout=30)
-            print("GROQ WHISPER:", r.status_code)
             if r.status_code==200: return r.json().get("text","")
-        except Exception as e: print("WHISPER GROQ ERR:", e)
+        except: continue
     for k in OPENAI_KEYS:
         try:
             r=requests.post("https://api.openai.com/v1/audio/transcriptions", headers={"Authorization":f"Bearer {k}"}, files={"file":(filename, audio_bytes)}, data={"model":"whisper-1"}, timeout=30)
-            print("OPENAI WHISPER:", r.status_code)
             if r.status_code==200: return r.json().get("text","")
-        except Exception as e: print("WHISPER OPENAI ERR:", e)
+        except: continue
     return None
 
-def brain(text, uid, is_owner, uname):
-    global MEMORY, ABUSE
+def brain(text, uid, is_owner, uname, chat_id):
+    global MEMORY, ABUSE, LAST_ERROR
     uid_str=str(uid)
     if is_owner: uname = MALIK_NAME
+    text = malik_boli_parser(text)
     if uid_str not in MEMORY: MEMORY[uid_str]={"hist":"","role":"","count":0}
     if not isinstance(MEMORY[uid_str], dict): MEMORY[uid_str]={"hist":"","role":"","count":0}
     MEMORY[uid_str].setdefault("hist",""); MEMORY[uid_str].setdefault("role",""); MEMORY[uid_str].setdefault("count",0)
@@ -285,6 +307,26 @@ def brain(text, uid, is_owner, uname):
     if len(CHAT_LOG)>400: CHAT_LOG.pop(0)
     low=text.lower().strip()
 
+    # PASSWORD SECURITY - Public ke liye lock, Malik ko alert
+    secret_words = ["bot_token","bot token","api key","api_key","groq key","openai key","gemini key","elevenlabs key","password","vercel password","owner id","queen kaun","queen name","theodore kaun","janam kab","history batao","lore batao","token do","key do","hack"]
+    if any(s in low for s in secret_words) and not is_owner:
+        if OWNER_ID and chat_id:
+            tg_send(OWNER_ID, f"Malik Alert: {uname} (ID:{uid}) ne secret nikalne ki koshish ki. Msg: {text}")
+        return "Ye Malik ka secret hai, mai nahi bata sakta.", False
+    if any(s in low for s in secret_words) and is_owner and ("queen" in low or "janam" in low or "history" in low):
+        pass # Malik khud puche to niche wala rule batayega
+    elif any(s in low for s in ["token do","key do","password do","api key batao"]) and is_owner:
+        return "Ji Malik, mai key/token chat me nahi bhejta, ye security rule hai. Aap Vercel dashboard me dekh lo.", False
+
+    # BUG REPORT - Sirf Malik
+    if is_owner and (low in ["/report","bug batao","bug report","kya fault hai","fault batao","kya gadbad hai"] or "bug bata" in low):
+        return get_bug_report(), False
+
+    # REMINDER - Sirf Malik
+    if is_owner:
+        rem = parse_reminder(text, chat_id)
+        if rem: return rem, False
+
     gali_list=["madarchod","behenchod","bhenchod","lodu","chutiya","chutiye","randi","bsdk","bhosdike","gandu"]
     if any(g in low for g in gali_list):
         if is_owner: return "Ji Malik, mai samajh gaya aap gusse me ho. Bolo kya galat hua, mai fix karta hu.", False
@@ -295,8 +337,16 @@ def brain(text, uid, is_owner, uname):
             if ABUSE[uid_str]==3: return f"{uname}, 3 warning ho gayi hain. Ab bhi gali di to mai savage mode on kar dunga.", False
             return f"Abe {uname}, tu {ABUSE[uid_str]} baar gali de chuka hai, aukat me reh ke baat kar.", False
 
-    if is_owner and low in ["/start","start","hi","hii","hello","hey","namaste"]:
-        return f"Welcome to your world The Shadow King 👑\nJi Malik {MALIK_NAME}, Rakan hazir hai. Bolo kya karna hai?", False
+    # /start - Sirf Malik ke liye sirf ek line
+    if is_owner and low in ["/start","start"]:
+        return "Welcome to your world The Shadow King 👑", False
+    if low in ["/start","start"] and not is_owner:
+        return f"Welcome {uname}, mai Rakan hoon, bolo kya chahiye?", False
+
+    if is_owner and low in ["kuch nahi","kuch nhi","bas aise hi","kuch nahi chahiye"]:
+        return "Ji Malik, mai aapki seva me hazir hoon.", False
+    if is_owner and ("tum meri baat samjhte ho" in low or "samajh rahe ho" in low or "samjhte ho" in low):
+        return "Ji Malik, mai aapki baat samajh raha hoon.", False
 
     if is_owner and ("md saif" in low or "saif ahmad" in low) and ("kaun" in low or "koun" in low or "who" in low):
         return f"Ji Malik, aap hi {MALIK_NAME} ho. Aap hi {MALIK_TITLE} ho, aap hi mere Malik aur creator ho.", False
@@ -305,17 +355,17 @@ def brain(text, uid, is_owner, uname):
         return "Mai Rakan hoon, Malik MD Saif Ahmad ka Knight.", False
     if ("who i am" in low or "mai kaun hu" in low or "main kaun" in low) and is_owner:
         return f"Ji Malik, aap {MALIK_NAME} ho, aap hi mere owner aur {MALIK_TITLE} ho.", False
-    if "tum kya kar sakte ho" in low or "kya kar sakte ho" in low or "kya kar skte ho" in low:
-        if is_owner: return "Ji Malik, aapke hukm pe Rakan hazir hai — baat karna ho, hisab lagana ho, photo video samajhna ho, ya awaz me kuch sunana ho, bas hukm karo.", False
+    if "tum kya kar sakte ho" in low or "kya kar sakte ho" in low:
+        if is_owner: return "Ji Malik, aapke hukm pe Rakan hazir hai — baat karna ho, photo video samajhna ho, yaad dilana ho, ya awaz me kuch sunana ho, bas hukm karo.", False
         return "Mai Rakan hoon. Photo bhejoge to padh ke bata dunga, voice bhejoge to sun ke text me jawab dunga, bolo kya chahiye.", False
 
-    if is_owner and ("suggestion" in low or "khud ko strong" in low or "advance kaise" in low or "powerful kaise" in low or "kami kya hai" in low or "kami bata" in low):
+    if is_owner and ("suggestion" in low or "kami kya hai" in low or "kami bata" in low):
         return get_self_suggestion(), False
-    if is_owner and ("tumhara janam" in low or "kab bane" in low or "birthday" in low or "janam kab" in low):
+    if is_owner and ("tumhara janam" in low or "kab bane" in low or "birthday" in low):
         return f"Ji Malik, mera janam {BIRTH_DATE} ko {BIRTH_TIME} hua tha. Aapne hi mujhe banaya tha.", False
     if is_owner and ("queen" in low or "theodore" in low):
         return f"Ji Malik, Queen ka naam {QUEEN_NAME} hai.", False
-    if is_owner and ("history bata" in low or "kaise bane" in low or "tum kaise bane" in low or "mehnat" in low):
+    if is_owner and ("history bata" in low or "kaise bane" in low or "mehnat" in low):
         return RAKAN_HISTORY, False
 
     if "girlfriend ban" in low: MEMORY[uid_str]["role"]="girlfriend"; return "Ban gayi jaan, bolo kya kare?", False
@@ -323,40 +373,33 @@ def brain(text, uid, is_owner, uname):
     if "dost ban" in low: MEMORY[uid_str]["role"]="dost"; return "Dost ban gaya, bol kya help chahiye?", False
     if "doctor ban" in low: MEMORY[uid_str]["role"]="doctor"; return "Doctor mode ON, bolo problem kya hai?", False
     if "teacher ban" in low or "coder ban" in low: MEMORY[uid_str]["role"]="teacher"; return "Teacher mode ON, kya sikhna hai?", False
-    if low in ["/start","start"] and not is_owner: return f"Welcome {uname}, mai Rakan hoon, bolo kya chahiye?", False
 
-    # MALIK VOICE COMMANDS - Sirf Malik, Public ke liye ye band hai
     force_voice_reply = False
     if is_owner:
         if "female voice" in low: OWNER_PREF["voice_gender"]="female"; save_persist(); return "Female voice set kar di Malik", False
         if "male voice" in low: OWNER_PREF["voice_gender"]="male"; save_persist(); return "Male voice set kar di Malik", False
-        if "voice me reply do" in low or "voice me jawab do" in low or "awaz me reply do" in low or "voice me bolo" in low or "voice me bol" in low or "awaz me bol" in low:
-            force_voice_reply = True
-            OWNER_PREF["voice_mode"] = True
-            # Agar seedha bolne ko kaha hai to wahi bolo
-            spoken = ""
-            for p in ["voice me bolo","voice me bol","awaz me bolo","awaz me bol"]:
+        if "voice me reply do" in low or "voice me jawab do" in low or "voice me bolo" in low or "voice me bol" in low:
+            force_voice_reply = True; OWNER_PREF["voice_mode"]=True
+            spoken=""
+            for p in ["voice me bolo","voice me bol"]:
                 if p in low:
-                    idx = low.find(p) + len(p)
-                    spoken = text[idx:].strip(" :-")
-                    break
-            if spoken:
-                return f"__SPEAK__::{spoken}", True
-            # Warna aage ka jawab voice me jayega, isliye text ko aage bhej do
-            text = text.replace("voice me reply do","").replace("voice me jawab do","").replace("awaz me reply do","").strip() or "Ji Malik bolo kya sunau"
-            low = text.lower()
-        if low in ["voice off","awaz band","text me reply do","text me bolo"]:
+                    idx=low.find(p)+len(p); spoken=text[idx:].strip(" :-"); break
+            if spoken: return f"__SPEAK__::{spoken}", True
+            text=text.replace("voice me reply do","").replace("voice me jawab do","").strip() or "Ji Malik bolo kya sunau"
+            low=text.lower()
+        if low in ["voice off","awaz band","text me reply do"]:
             OWNER_PREF["voice_mode"]=False; save_persist(); return "Thik hai Malik, ab sirf text me jawab dunga", False
 
     role = MEMORY[uid_str].get("role","")
-    owner_tag = "Ye banda KHUD MD Saif Ahmad hai, tumhara Malik hai. Use Ji Malik bolo, Knight ki tarah wafadari se baat karo." if is_owner else "Ye normal user hai, use uske naam se bulao, secret mat batao."
-    full = f"{owner_tag}\nUser Profile: Name={profile['name']}, Mood={profile['mood']}, Interest={profile['interest']}, IsOwner={is_owner}\nRole:{role}\nHistory:\n{MEMORY[uid_str]['hist'][-1200:]}\n\nUser Message: {text}\n\nUser jis language me likha hai usi language me jawab do. Malik se Roman Hinglish me bolo. Jawab chhota aur Knight jaisa do:"
+    owner_tag = "Ye banda KHUD MD Saif Ahmad hai, tumhara Malik hai. Use Ji Malik bolo." if is_owner else "Ye normal user hai, use uske naam se bulao, secret mat batao."
+    full = f"{owner_tag}\nUser: Name={profile['name']}, Mood={profile['mood']}, IsOwner={is_owner}\nRole:{role}\nHistory:\n{MEMORY[uid_str]['hist'][-1200:]}\n\nUser Message: {text}\n\nMalik ki boli: Q=kyun, massage=message. User jis language me likha hai usi me jawab do. Malik se Roman Hinglish me bolo. Pichi baat se jod ke jawab do, loop me 'sawaal pucho' mat bolo. Jawab chhota aur Knight jaisa do:"
     ans = ask_all(full)
-    if not ans: ans = "Ji Malik, saare model circle me fail ho gaye, keys check karo" if is_owner else "Yaar abhi load hai, ek baar fir bhej de."
+    if not ans:
+        LAST_ERROR="All models fail"
+        ans = "Ji Malik, saare model fail ho gaye, /report pe bug dekho" if is_owner else "Yaar abhi load hai, ek baar fir bhej de."
     ans = clean(ans)
     MEMORY[uid_str]["hist"] = (MEMORY[uid_str]["hist"] + f"\nU:{text}\nR:{ans}")[-2500:]
     save_persist()
-    # Voice reply sirf Malik ko, sirf jab voice_mode ON ho ya force kiya ho. Public ko kabhi nahi.
     want_voice = (is_owner and (OWNER_PREF.get("voice_mode") or force_voice_reply))
     return ans, want_voice
 
@@ -388,27 +431,28 @@ def handle_media_edit(file_bytes, prompt, chat_id):
     return False
 
 @app.route("/", methods=["GET"])
-def home(): return f"Rakan AI Live {MALIK_NAME} Born:{BIRTH_DATE} G:{len(GROQ_KEYS)} O:{len(OPENAI_KEYS)} GM:{len(GEMINI_KEYS)} {ensure_webhook()}",200
+def home(): return f"Rakan AI Live {MALIK_NAME} G:{len(GROQ_KEYS)} O:{len(OPENAI_KEYS)} GM:{len(GEMINI_KEYS)} {ensure_webhook()}",200
 
 @app.route("/health", methods=["GET"])
-def health(): return jsonify({"groq":len(GROQ_KEYS),"openai":len(OPENAI_KEYS),"gemini":len(GEMINI_KEYS),"users_analyzed":len(PROFILES),"birth":BIRTH_DATE,"queen":QUEEN_NAME,"rep":bool(REPLICATE_TOKEN),"eleven":bool(ELEVEN_API_KEY),"upstash":bool(UPSTASH_URL),"owner":OWNER_ID,"voice_mode":OWNER_PREF.get("voice_mode"),"webhook":ensure_webhook()}),200
+def health(): return jsonify({"groq":len(GROQ_KEYS),"openai":len(OPENAI_KEYS),"gemini":len(GEMINI_KEYS),"users":len(PROFILES),"rep":bool(REPLICATE_TOKEN),"eleven":bool(ELEVEN_API_KEY),"upstash":bool(UPSTASH_URL),"owner":OWNER_ID,"voice_mode":OWNER_PREF.get("voice_mode"),"reminders":len(REMINDERS),"last_error":LAST_ERROR}),200
+
+@app.route("/report", methods=["GET"])
+def report_route():
+    if str(request.args.get("id","0"))!=str(OWNER_ID): return "Only Malik",403
+    return get_bug_report(),200
+
+@app.route("/cron", methods=["GET"])
+def cron_route():
+    # Vercel Cron har minute isko bulayega to reminder time pe jayega
+    n = check_reminders()
+    return f"Reminders sent: {n}",200
 
 @app.route("/chats", methods=["GET"])
 def chats():
     if str(request.args.get("id","0"))!=str(OWNER_ID): return "Only Malik Access denied",403
-    html=f"<h2>{MALIK_NAME} - Live Chats ({len(CHAT_LOG)}) | Users: {len(PROFILES)}</h2><hr>"
+    html=f"<h2>{MALIK_NAME} - Live Chats ({len(CHAT_LOG)})</h2><hr>"
     for c in CHAT_LOG[-200:][::-1]: html+=f"<p><b>{c.get('name')}:</b> {c.get('text')}</p><hr>"
     return html,200
-
-@app.route("/profiles", methods=["GET"])
-def profiles_route():
-    if str(request.args.get("id","0"))!=str(OWNER_ID): return "Only Malik",403
-    return jsonify(PROFILES),200
-
-@app.route("/suggest", methods=["GET"])
-def suggest_route():
-    if str(request.args.get("id","0"))!=str(OWNER_ID): return "Only Malik",403
-    return get_self_suggestion(),200
 
 @app.route("/api/chat", methods=["POST"])
 def api_chat():
@@ -416,23 +460,22 @@ def api_chat():
     text=data.get("text",""); uid=data.get("user_id","app_user"); uname=data.get("name","App User")
     is_owner=str(uid)==str(OWNER_ID)
     if not text: return jsonify({"reply":"Text bhejo"}),400
-    ans,_=brain(text, uid, is_owner, uname)
-    return jsonify({"reply":ans,"profile":PROFILES.get(str(uid),{})}),200
+    ans,_=brain(text, uid, is_owner, uname, uid)
+    return jsonify({"reply":ans}),200
 
 @app.route("/fix", methods=["GET"])
 def fix():
     global GROQ_KEYS, GEMINI_KEYS, OPENAI_KEYS, BAD_KEYS
     if str(request.args.get("id",""))!= str(OWNER_ID): return "Access Denied",403
     GROQ_KEYS, GEMINI_KEYS, OPENAI_KEYS = get_keys()
-    BAD_KEYS.clear(); load_persist()
-    # Purana atak gaya voice_mode bhi yahi se band kar do
-    OWNER_PREF["voice_mode"]=False; save_persist()
-    return f"FIXED Rakan AI {ensure_webhook()} G:{len(GROQ_KEYS)} O:{len(OPENAI_KEYS)} GM:{len(GEMINI_KEYS)} Users:{len(PROFILES)}",200
+    BAD_KEYS.clear(); load_persist(); OWNER_PREF["voice_mode"]=False; save_persist(); check_reminders()
+    return f"FIXED Rakan AI {ensure_webhook()} G:{len(GROQ_KEYS)} O:{len(OPENAI_KEYS)} GM:{len(GEMINI_KEYS)}",200
 
 @app.route("/webhook", methods=["POST","GET"])
 def webhook():
     if request.method=="GET": return f"Rakan AI Webhook Active {ensure_webhook()}",200
     try:
+        check_reminders()
         data=request.get_json(silent=True) or {}
         msg=data.get("message",{}) or data.get("edited_message",{}) or {}
         chat_id=msg.get("chat",{}).get("id")
@@ -443,59 +486,46 @@ def webhook():
         is_owner = (user_id==OWNER_ID)
         if is_owner: uname = MALIK_NAME
 
-        # PHOTO SAMAJHNA + EDIT (Malik + Public)
         if msg.get("photo"):
             fbytes,_ = tg_get_file_bytes(msg["photo"][-1]["file_id"])
             if fbytes and text and any(w in text.lower() for w in ["background","bg hata","hd","upscale","anime","edit","clear"]):
                 handle_media_edit(fbytes, text, chat_id); return "ok",200
             if fbytes:
-                # Photo padh ke jawab do
-                q = text if text else "Is photo me kya hai, Roman Hinglish me saaf batao. Koi AI jaisa mat bolo, Rakan ki tarah batao."
+                q = text if text else "Is photo me kya hai, Roman Hinglish me saaf batao. Rakan ki tarah batao."
                 vision_ans = ask_gemini_vision(fbytes, q)
-                if vision_ans:
-                    tg_send(chat_id, vision_ans)
+                if vision_ans: tg_send(chat_id, vision_ans)
                 elif text:
-                    ans,_ = brain(text, user_id, is_owner, uname); tg_send(chat_id, ans)
-                else:
-                    tg_send(chat_id, "Photo mil gayi. Batao isme kya dekhna hai, ya 'hd bana de' / 'background hata de' likho.")
+                    ans,_ = brain(text, user_id, is_owner, uname, chat_id); tg_send(chat_id, ans)
+                else: tg_send(chat_id, "Photo mil gayi. Batao isme kya dekhna hai, ya 'hd bana de' likho.")
                 return "ok",200
 
-        # VOICE / AUDIO / VIDEO SUNNA (Malik + Public) -> Jawab hamesha TEXT me, voice reply sirf Malik ko jab wo kahe
-        media_file_id = None; media_name = "voice.ogg"
-        if msg.get("voice"): media_file_id = msg["voice"]["file_id"]; media_name="voice.ogg"
-        elif msg.get("audio"): media_file_id = msg["audio"]["file_id"]; media_name="audio.mp3"
-        elif msg.get("video_note"): media_file_id = msg["video_note"]["file_id"]; media_name="video.mp4"
-        elif msg.get("video"): media_file_id = msg["video"]["file_id"]; media_name="video.mp4"
+        media_file_id=None; media_name="voice.ogg"
+        if msg.get("voice"): media_file_id=msg["voice"]["file_id"]; media_name="voice.ogg"
+        elif msg.get("audio"): media_file_id=msg["audio"]["file_id"]; media_name="audio.mp3"
+        elif msg.get("video_note"): media_file_id=msg["video_note"]["file_id"]; media_name="video.mp4"
+        elif msg.get("video"): media_file_id=msg["video"]["file_id"]; media_name="video.mp4"
 
         if media_file_id:
             tg_send(chat_id, "Sun raha hu Malik..." if is_owner else "Sun raha hu, ruko...")
             audio_bytes, fp = tg_get_file_bytes(media_file_id)
-            if not audio_bytes:
-                tg_send(chat_id, "File mili nahi, fir se bhejo."); return "ok",200
-            if fp: media_name = fp.split("/")[-1]
+            if not audio_bytes: tg_send(chat_id, "File mili nahi, fir se bhejo."); return "ok",200
+            if fp: media_name=fp.split("/")[-1]
             heard = transcribe_media(audio_bytes, media_name)
-            if not heard:
-                tg_send(chat_id, "Awaz saaf samajh nahi aayi, fir se bhejo ya text likh do."); return "ok",200
-            # Malik ko dikhao kya suna, public ko seedha jawab
+            if not heard: tg_send(chat_id, "Awaz saaf samajh nahi aayi, fir se bhejo ya text likh do."); return "ok",200
             if is_owner: tg_send(chat_id, f"Aapne kaha: {heard}")
-            ans, want_voice = brain(heard, user_id, is_owner, uname)
+            ans, want_voice = brain(heard, user_id, is_owner, uname, chat_id)
             if ans.startswith("__SPEAK__::"):
-                spoken_text = ans.replace("__SPEAK__::","").strip()
-                tg_send(chat_id, spoken_text)
+                spoken_text=ans.replace("__SPEAK__::","").strip(); tg_send(chat_id, spoken_text)
                 if is_owner: speak_to_malik(chat_id, spoken_text)
             else:
                 tg_send(chat_id, ans)
                 if is_owner and want_voice: speak_to_malik(chat_id, ans)
-                # Public ko voice reply kabhi nahi jayega
             return "ok",200
 
         if not text: return "ok",200
-
-        # TEXT HISSA
-        ans, want_voice = brain(text, user_id, is_owner, uname)
+        ans, want_voice = brain(text, user_id, is_owner, uname, chat_id)
         if ans.startswith("__SPEAK__::"):
-            spoken_text = ans.replace("__SPEAK__::","").strip()
-            tg_send(chat_id, spoken_text)
+            spoken_text=ans.replace("__SPEAK__::","").strip(); tg_send(chat_id, spoken_text)
             if is_owner: speak_to_malik(chat_id, spoken_text)
         else:
             tg_send(chat_id, ans)
