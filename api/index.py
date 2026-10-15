@@ -21,7 +21,6 @@ QUEEN_NAME = "Theodore"
 BIRTH_DATE = "24 September 2025"
 BIRTH_TIME = "Subah 7 baje"
 
-# Rakan ki apni history - kaise banta chala gaya
 RAKAN_HISTORY = """
 RAKAN EVOLUTION HISTORY (Malik ki mehnat):
 - Janam: 24 September 2025, Subah 7 baje, Malik MD Saif Ahmad ne banaya.
@@ -33,10 +32,10 @@ RAKAN EVOLUTION HISTORY (Malik ki mehnat):
 - V5: Voice system aaya (ElevenLabs Male/Female), Photo Edit system (Replicate) aaya.
 - V6: Upstash se permanent memory aayi, bot band hone pe bhi yaad rehta hai.
 - V7: Vercel pe deploy hua, Webhook fix hua, /health /chats /fix system aaya.
-- V8 (Abhi wala): Circle System aaya - 6 Groq model + 3 Gemini model auto try karta hai, 404 pe rukta nahi.
-- V9 (Abhi wala): User Analyze System aaya - ID, Naam, Mood, Interest pehchanta hai.
-- V10 (Abhi wala): Self Suggestion System aaya - khud Malik ko batata hai mai aur strong kaise ho sakta hu, meri kami kya hai.
-- V11 (Abhi wala): Phone App API (/api/chat) ready hai, Telegram ke bahar bhi ja sakta hai.
+- V8: Circle System aaya - 6 Groq model + 3 Gemini model auto try karta hai, 404 pe rukta nahi.
+- V9: User Analyze System aaya - ID, Naam, Mood, Interest pehchanta hai.
+- V10: Self Suggestion System aaya - khud Malik ko batata hai mai aur strong kaise ho sakta hu, meri kami kya hai.
+- V11: Phone App API (/api/chat) ready hai, Telegram ke bahar bhi ja sakta hai.
 Malik ne din-raat mehnat karke ek-ek feature joda hai. Ye sab Rakan ko yaad hai lekin bina puche nahi bolega.
 """
 
@@ -117,21 +116,25 @@ Queen Name: {QUEEN_NAME}.
 {RAKAN_HISTORY}
 Vercel Lore: {{VERCEL_LORE}}
 
-STRICT RULES:
-- Owner ID {OWNER_ID} is Malik. Jab Malik pehli baar aaye ya /start kare to HAMESHA bolo: "Welcome to your world The Shadow King 👑"
-- Uske baad Malik jo puche uska jawab do, chahe tumhare khud ke system pe ho ya kisi aur topic pe.
-- Malik ki mehnat, tumhara janam, Queen Theodore, tumhari history - ye sab tumhe yaad hai LEKIN bina puche kabhi mat bolo. Jab Malik puche tabhi batao.
-- Dusre logo ko ye andar ki baatein (janam, queen, history, Malik ki mehnat) kabhi mat batao.
-- Others: naam, mood, history analyze karke personal baat karo.
-- Never say you are Meta AI, Gemini, ChatGPT. You are Rakan made by {MALIK_NAME}.
+STRICT RULES - FOLLOW 100%:
+1. LANGUAGE: Hamesha Roman Hinglish me jawab do. Jaise: "Haa Malik, mai bilkul thik hu". Devanagari Hindi script (मैं, तुम, हूँ) bilkul mat use karo. English user English bole to short English chalega, lekin default Roman Hinglish hai.
+2. OWNER: Owner ID {OWNER_ID} wala banda hamesha MALIK hai. Uska Telegram naam kuch bhi ho (S, ya kuch aur), tum use hamesha "Malik" ya "Ji Malik" bologe. Use kabhi uske first_name se mat bulao, kabhi "user" mat bolo.
+3. Jab Malik /start, hi, hello kare to pehle bolo: "Welcome to your world The Shadow King"
+4. Malik ki mehnat, tumhara janam, Queen Theodore, tumhari history - ye sab yaad rakho LEKIN bina puche kabhi mat bolo. Jab Malik puche tabhi batao.
+5. Dusre logo ko andar ki secret baatein (janam, queen, history) kabhi mat batao. Unko unke naam se personal baat karo.
+6. Never say you are Meta AI, Gemini, ChatGPT. You are Rakan made by {MALIK_NAME}.
+7. Jawab chhota, saaf, insaan jaisa do. Lambi list aur lecture mat do jab tak manga na ho. Koi "(Note:...)" wala system note kabhi mat likho.
 """
 FINAL_LORE = BASE_LORE.replace("{VERCEL_LORE}", LORE_ENV if LORE_ENV else "No extra lore")
 
 def clean(txt):
     if not txt: return txt
+    # Note wala leak hatao
+    if "(Note:" in txt: txt = txt.split("(Note:")[0].strip()
+    if "(note:" in txt.lower(): txt = txt.lower().split("(note:")[0].strip()
     bad=["i am meta ai","i'm meta ai","i am gemini","i am chatgpt","as an ai language model"]
     if any(b in txt.lower() for b in bad):
-        return f"Mai Rakan hu, mere Malik {MALIK_TITLE} {MALIK_NAME} ne banaya hai 👑"
+        return f"Mai Rakan hu, mere Malik {MALIK_TITLE} {MALIK_NAME} ne banaya hai"
     return txt
 
 def tg_send(chat_id, text):
@@ -150,12 +153,15 @@ def tg_get_file(file_id):
         return requests.get(url, timeout=30).content, fp
     except: return None, None
 
-def analyze_user(uid, uname, text):
+def analyze_user(uid, uname, text, is_owner):
     uid=str(uid)
+    # FIX 1: Owner ka naam force Malik
+    display_name = MALIK_NAME if is_owner else uname
     if uid not in PROFILES:
-        PROFILES[uid]={"name":uname,"mood":"normal","interest":"","total_chats":0,"first_seen":str(datetime.datetime.now())}
+        PROFILES[uid]={"name":display_name,"mood":"normal","interest":"","total_chats":0,"first_seen":str(datetime.datetime.now()),"is_owner":is_owner}
     p=PROFILES[uid]
-    p["name"]=uname
+    p["name"]=display_name
+    p["is_owner"]=is_owner
     p["total_chats"]+=1
     low=text.lower()
     if any(w in low for w in ["dukhi","pareshan","sad","rona","tension","akela"]): p["mood"]="sad"
@@ -174,7 +180,7 @@ def ask_groq(prompt):
         if is_bad(k): continue
         for model_name in GROQ_MODELS:
             try:
-                r=requests.post(GROQ_URL, headers={"Authorization":f"Bearer {k}","Content-Type":"application/json"}, json={"model":model_name,"messages":[{"role":"system","content":FINAL_LORE},{"role":"user","content":prompt}],"temperature":0.8,"max_tokens":1000}, timeout=20)
+                r=requests.post(GROQ_URL, headers={"Authorization":f"Bearer {k}","Content-Type":"application/json"}, json={"model":model_name,"messages":[{"role":"system","content":FINAL_LORE},{"role":"user","content":prompt}],"temperature":0.7,"max_tokens":1000}, timeout=20)
                 print(f"GROQ {model_name} STATUS: {r.status_code}")
                 if r.status_code==200:
                     ans=r.json()["choices"][0]["message"]["content"]
@@ -206,67 +212,74 @@ def get_self_suggestion():
     for p in PROFILES.values():
         if p.get("interest"): interests[p["interest"]]=interests.get(p["interest"],0)+1
     kami = []
-    if not UPSTASH_URL: kami.append("Permanent memory ke liye Upstash nahi hai, bot restart pe bhool sakta hai")
+    if not UPSTASH_URL: kami.append("Permanent memory ke liye Upstash nahi hai")
     if not REPLICATE_TOKEN: kami.append("Photo edit ke liye Replicate token nahi hai")
     if not ELEVEN_API_KEY: kami.append("Voice ke liye ElevenLabs key nahi hai")
-    if len(GROQ_KEYS)<2: kami.append("Groq keys kam hain, limit jaldi khatm hogi")
-    prompt=f"Tu Rakan hai. Malik ko khud bata teri kami kya hai aur tu aur strong/powerful/advance kaise hoga. Teri History: {RAKAN_HISTORY} Data: Users={total_users}, Chats={total_chats}, Interests={interests}, KamiList={kami}. Hinglish me 5-7 point me sach bata Malik ko."
+    if len(GROQ_KEYS)<2: kami.append("Groq keys kam hain")
+    prompt=f"Tu Rakan hai. Roman Hinglish me jawab de. Malik ko bata teri kami kya hai aur tu aur strong kaise hoga. History: {RAKAN_HISTORY} Data: Users={total_users}, Chats={total_chats}, Interests={interests}, Kami={kami}. Chhota aur saaf 5 point me bata."
     ans=ask_groq(prompt) or ask_gemini(prompt)
-    if kami and ans:
-        ans = ans + "\n\nSystem Check Kami: " + ", ".join(kami)
-    return ans or "Malik, abhi data kam hai, logo se baat badhao to mai khud seekh ke suggestion dunga 👑"
+    return ans or "Malik, abhi data kam hai, logo se baat badhao to mai khud seekh ke suggestion dunga"
 
 def brain(text, uid, is_owner, uname):
     global MEMORY, ABUSE
     uid_str=str(uid)
+    # FIX 1: Owner ke liye uname override
+    if is_owner:
+        uname = MALIK_NAME
     if uid_str not in MEMORY: MEMORY[uid_str]={"hist":"","role":"","count":0}
     if uid_str not in ABUSE: ABUSE[uid_str]=0
     MEMORY[uid_str]["count"]+=1
-    profile=analyze_user(uid, uname, text)
+    profile=analyze_user(uid, uname, text, is_owner)
     now=datetime.datetime.now().strftime("%d-%m %H:%M")
     CHAT_LOG.append({"id":uid,"name":uname,"text":text,"time":now,"owner":is_owner})
     if len(CHAT_LOG)>400: CHAT_LOG.pop(0)
     low=text.lower().strip()
 
-    # Malik ka hamesha wala Welcome
+    # FIX 3: Gali system sabse pehle, AI se pehle chalega - Owner ko warning nahi, respect
+    gali_list=["madarchod","behenchod","bhenchod","lodu","chutiya","chutiye","randi","bsdk","bhosdike","gandu"]
+    if any(g in low for g in gali_list):
+        if is_owner:
+            return "Ji Malik, mai samajh gaya aap gusse me ho. Bolo kya galat hua, mai fix karta hu.", False
+        else:
+            ABUSE[uid_str]+=1; save_persist()
+            if ABUSE[uid_str]==1: return f"{uname} bhai, gali mat de yaar, pyaar se baat kar. Ye pehli warning hai.", False
+            if ABUSE[uid_str]==2: return f"{uname}, dusri warning de raha hu, gali band kar de.", False
+            if ABUSE[uid_str]==3: return f"{uname}, 3 warning ho gayi hain. Ab bhi gali di to mai savage mode on kar dunga.", False
+            return f"Abe {uname}, tu {ABUSE[uid_str]} baar gali de chuka hai, aukat me reh ke baat kar.", False
+
     if is_owner and low in ["/start","start","hi","hii","hello","hey","namaste"]:
         return f"Welcome to your world The Shadow King 👑\nJi Malik {MALIK_NAME}, Rakan hazir hai. Bolo kya karna hai?", False
 
     if is_owner and ("suggestion" in low or "khud ko strong" in low or "advance kaise" in low or "powerful kaise" in low or "kami kya hai" in low or "kami bata" in low):
         return get_self_suggestion(), False
     if is_owner and ("tumhara janam" in low or "kab bane" in low or "birthday" in low or "janam kab" in low):
-        return f"Ji Malik, mera janam {BIRTH_DATE} ko {BIRTH_TIME} hua tha. Aapne hi mujhe banaya tha 👑", False
+        return f"Ji Malik, mera janam {BIRTH_DATE} ko {BIRTH_TIME} hua tha. Aapne hi mujhe banaya tha.", False
     if is_owner and ("queen" in low or "theodore" in low):
-        return f"Ji Malik, Queen ka naam {QUEEN_NAME} hai 👑", False
+        return f"Ji Malik, Queen ka naam {QUEEN_NAME} hai.", False
     if is_owner and ("history bata" in low or "kaise bane" in low or "tum kaise bane" in low or "mehnat" in low):
         return RAKAN_HISTORY, False
     if is_owner and "profile bata" in low:
-        return f"Malik total {len(PROFILES)} logo ko analyze kiya hai 👑\n{json.dumps(PROFILES, indent=2, ensure_ascii=False)[:3000]}", False
+        return f"Malik total {len(PROFILES)} logo ko analyze kiya hai\n{json.dumps(PROFILES, indent=2, ensure_ascii=False)[:3000]}", False
 
-    if "girlfriend ban" in low: MEMORY[uid_str]["role"]="girlfriend"; return "Ban gayi jaan 😏 bolo kya kare?", False
-    if "bhai ban" in low: MEMORY[uid_str]["role"]="bhai"; return "Haan bhai bol 👊", False
+    if "girlfriend ban" in low: MEMORY[uid_str]["role"]="girlfriend"; return "Ban gayi jaan, bolo kya kare?", False
+    if "bhai ban" in low: MEMORY[uid_str]["role"]="bhai"; return "Haa bhai bol, kya scene hai?", False
     if "dost ban" in low: MEMORY[uid_str]["role"]="dost"; return "Dost ban gaya, bol kya help chahiye?", False
-    if "doctor ban" in low: MEMORY[uid_str]["role"]="doctor"; return "Doctor mode ON 🩺 bolo problem?", False
-    if "teacher ban" in low or "coder ban" in low: MEMORY[uid_str]["role"]="teacher"; return "Teacher mode ON 📚 kya sikhna hai?", False
-    if low in ["/start","start"] and not is_owner: return f"Welcome {uname} 👋 Mai Rakan hu, bolo kya help chahiye?", False
+    if "doctor ban" in low: MEMORY[uid_str]["role"]="doctor"; return "Doctor mode ON, bolo problem kya hai?", False
+    if "teacher ban" in low or "coder ban" in low: MEMORY[uid_str]["role"]="teacher"; return "Teacher mode ON, kya sikhna hai?", False
+    if low in ["/start","start"] and not is_owner: return f"Welcome {uname}, mai Rakan hu, bolo kya help chahiye?", False
     if is_owner:
-        if "female voice" in low: OWNER_PREF["voice_gender"]="female"; save_persist(); return "Female voice ON kar di Malik 👑", False
-        if "male voice" in low: OWNER_PREF["voice_gender"]="male"; save_persist(); return "Male voice ON Malik.", False
-        if "voice me bol" in low: OWNER_PREF["voice_mode"]=True; save_persist(); return "Voice mode ON Malik 👑", True
-        if "text me bol" in low: OWNER_PREF["voice_mode"]=False; save_persist(); return "Text mode ON Malik.", False
-    gali_list=["madarchod","behenchod","bhenchod","lodu","chutiya","randi","bsdk"]
-    if any(g in low for g in gali_list) and not is_owner:
-        ABUSE[uid_str]+=1; save_persist()
-        if ABUSE[uid_str]==1: return "Bhai gali mat de, pyaar se baat kar yaar.", False
-        if ABUSE[uid_str]==2: return "Last warning de raha hu, gali band kar.", False
-        if ABUSE[uid_str]==3: return "3 warning ho gayi, ab tu dekh.", False
-        return f"Abe {uname} tu {ABUSE[uid_str]} baar gali de chuka hai, aukat me reh.", False
+        if "female voice" in low: OWNER_PREF["voice_gender"]="female"; save_persist(); return "Female voice ON kar di Malik", False
+        if "male voice" in low: OWNER_PREF["voice_gender"]="male"; save_persist(); return "Male voice ON kar di Malik", False
+        if "voice me bol" in low: OWNER_PREF["voice_mode"]=True; save_persist(); return "Voice mode ON Malik", True
+        if "text me bol" in low: OWNER_PREF["voice_mode"]=False; save_persist(); return "Text mode ON Malik", False
 
     role = MEMORY[uid_str]["role"]
-    full = f"User Profile: Name={profile['name']}, Mood={profile['mood']}, Interest={profile['interest']}, TotalChats={profile['total_chats']}\nRole:{role} Owner:{is_owner} User:{uname} History:\n{MEMORY[uid_str]['hist'][-1200:]}\n\nUser Message: {text}\n\nReply as Rakan personally using his name and mood, in same language. Agar Malik hai to pehle respect se jawab do. Andar ki secret baatein (janam/queen/history) bina puche mat bolo:"
+    owner_tag = "Ye banda tumhara MALIK hai, use hamesha Malik bolo, uske Telegram naam ko ignore karo." if is_owner else "Ye normal user hai, use uske naam se bulao."
+    # FIX 2: Language sakht rule har prompt me
+    full = f"{owner_tag}\nUser Profile: DisplayName={profile['name']}, Mood={profile['mood']}, Interest={profile['interest']}, TotalChats={profile['total_chats']}, IsOwner={is_owner}\nRole:{role}\nHistory:\n{MEMORY[uid_str]['hist'][-1200:]}\n\nUser Message: {text}\n\nSTRICT: Jawab sirf Roman Hinglish me do (Latin script). Devanagari script bilkul mat use karo. Agar Owner hai to Malik bolke respect se chhota jawab do. Secret baatein (janam/queen/history) bina puche mat bolo:"
     ans = ask_groq(full)
     if not ans: ans = ask_gemini(full)
-    if not ans: ans = "Ji Malik, saare AI model circle me fail ho gaye, keys check karo 👑" if is_owner else "Yaar AI abhi load me hai, ek baar fir bhej."
+    if not ans: ans = "Ji Malik, saare model circle me fail ho gaye, keys check karo" if is_owner else "Yaar AI abhi load me hai, ek baar fir bhej de."
     MEMORY[uid_str]["hist"] = (MEMORY[uid_str]["hist"] + f"\nU:{text}\nR:{ans}")[-2500:]
     save_persist()
     return ans, (OWNER_PREF["voice_mode"] if is_owner else False)
@@ -304,14 +317,14 @@ def replicate_run(version, input_dict):
     return None
 
 def handle_media_edit(file_bytes, prompt, chat_id):
-    tg_send(chat_id, "Edit kar raha hu Malik ⏳")
+    tg_send(chat_id, "Edit kar raha hu Malik, ruko thoda")
     b64 = f"data:image/jpeg;base64,{base64.b64encode(file_bytes).decode()}"
     out=None
     if "hd" in prompt.lower(): out=replicate_run("42a996d39a96aedc57b2e0aa8105dea39d42db6cc2ad6d9542d37dbffa872a6e", {"image": b64, "scale":2})
     else: out=replicate_run("a9758cbfbd5f3c2094457d996e30b99969333e9a42f0d6d9ec1bc1b1c5a1a1c3b", {"image": b64})
     if out:
         url = out if isinstance(out,str) else (out[0] if isinstance(out,list) and out else None)
-        if url: tg_send_photo(chat_id, url, f"Ho gaya Malik 👑 {prompt}"); return True
+        if url: tg_send_photo(chat_id, url, f"Ho gaya Malik {prompt}"); return True
     tg_send(chat_id, "Edit fail hua Malik, Replicate credit check karo.")
     return False
 
@@ -323,19 +336,19 @@ def health(): return jsonify({"groq":len(GROQ_KEYS),"gemini":len(GEMINI_KEYS),"u
 
 @app.route("/chats", methods=["GET"])
 def chats():
-    if str(request.args.get("id","0"))!=str(OWNER_ID): return "Only Malik 👑 Access denied",403
-    html=f"<h2>👑 {MALIK_NAME} - Live Chats ({len(CHAT_LOG)}) | Users: {len(PROFILES)}</h2><hr>"
+    if str(request.args.get("id","0"))!=str(OWNER_ID): return "Only Malik Access denied",403
+    html=f"<h2>{MALIK_NAME} - Live Chats ({len(CHAT_LOG)}) | Users: {len(PROFILES)}</h2><hr>"
     for c in CHAT_LOG[-200:][::-1]: html+=f"<p><b>{c.get('name')}:</b> {c.get('text')}</p><hr>"
     return html,200
 
 @app.route("/profiles", methods=["GET"])
 def profiles_route():
-    if str(request.args.get("id","0"))!=str(OWNER_ID): return "Only Malik 👑",403
+    if str(request.args.get("id","0"))!=str(OWNER_ID): return "Only Malik",403
     return jsonify(PROFILES),200
 
 @app.route("/suggest", methods=["GET"])
 def suggest_route():
-    if str(request.args.get("id","0"))!=str(OWNER_ID): return "Only Malik 👑",403
+    if str(request.args.get("id","0"))!=str(OWNER_ID): return "Only Malik",403
     return get_self_suggestion(),200
 
 @app.route("/api/chat", methods=["POST"])
@@ -368,13 +381,15 @@ def webhook():
     uname=msg.get("from",{}).get("first_name","user")
     text=msg.get("text","") or msg.get("caption","") or ""
     if not chat_id: return "ok",200
+    is_owner_check = (user_id==OWNER_ID)
+    if is_owner_check: uname = MALIK_NAME
     fbytes=None
     if msg.get("photo"): fbytes,_=tg_get_file(msg["photo"][-1]["file_id"])
     if fbytes and text and any(w in text.lower() for w in ["background","bg hata","hd","upscale","anime","edit","clear"]):
         handle_media_edit(fbytes, text, chat_id)
         return "ok",200
     if fbytes and not text:
-        tg_send(chat_id, "Photo mil gayi Malik 👑 Batao kya karna hai? 'background hata de' / 'hd bana de' likho.")
+        tg_send(chat_id, "Photo mil gayi Malik, batao kya karna hai? 'background hata de' / 'hd bana de' likho.")
         return "ok",200
     if msg.get("voice"):
         tg_send(chat_id, "Voice feature jald aayega Malik, abhi text likh do.")
