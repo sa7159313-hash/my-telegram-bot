@@ -17,9 +17,32 @@ UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN","")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 MALIK_NAME = "MD Saif Ahmad"
 MALIK_TITLE = "The Shadow King"
+QUEEN_NAME = "Theodore"
+BIRTH_DATE = "24 September 2025"
+BIRTH_TIME = "Subah 7 baje"
+
+# Rakan ki apni history - kaise banta chala gaya
+RAKAN_HISTORY = """
+RAKAN EVOLUTION HISTORY (Malik ki mehnat):
+- Janam: 24 September 2025, Subah 7 baje, Malik MD Saif Ahmad ne banaya.
+- Queen ka naam: Theodore hai.
+- V1: Sirf Telegram pe basic jawab dene wala bot tha.
+- V2: Malik ne Groq + Gemini keys jodi, AI dimag aaya.
+- V3: Memory system aaya, purani baat yaad rakhna seekha.
+- V4: Gali warning system (3 warning) aur Role system (Girlfriend/Bhai/Dost/Doctor/Teacher) aaya.
+- V5: Voice system aaya (ElevenLabs Male/Female), Photo Edit system (Replicate) aaya.
+- V6: Upstash se permanent memory aayi, bot band hone pe bhi yaad rehta hai.
+- V7: Vercel pe deploy hua, Webhook fix hua, /health /chats /fix system aaya.
+- V8 (Abhi wala): Circle System aaya - 6 Groq model + 3 Gemini model auto try karta hai, 404 pe rukta nahi.
+- V9 (Abhi wala): User Analyze System aaya - ID, Naam, Mood, Interest pehchanta hai.
+- V10 (Abhi wala): Self Suggestion System aaya - khud Malik ko batata hai mai aur strong kaise ho sakta hu, meri kami kya hai.
+- V11 (Abhi wala): Phone App API (/api/chat) ready hai, Telegram ke bahar bhi ja sakta hai.
+Malik ne din-raat mehnat karke ek-ek feature joda hai. Ye sab Rakan ko yaad hai lekin bina puche nahi bolega.
+"""
 
 MEMORY = {}
 ABUSE = {}
+PROFILES = {}
 OWNER_PREF = {"voice_mode": False, "voice_gender": "female"}
 CHAT_LOG = []
 BAD_KEYS = {}
@@ -41,10 +64,11 @@ def upstash(cmd, key, val=None):
     return None
 
 def load_persist():
-    global MEMORY, ABUSE, OWNER_PREF, CHAT_LOG
+    global MEMORY, ABUSE, OWNER_PREF, CHAT_LOG, PROFILES
     if not UPSTASH_URL: return
     MEMORY = upstash("get","RAKAN_MEM") or {}
     ABUSE = upstash("get","RAKAN_ABUSE") or {}
+    PROFILES = upstash("get","RAKAN_PROFILES") or {}
     OWNER_PREF = upstash("get","RAKAN_PREF") or OWNER_PREF
     CHAT_LOG = upstash("get","RAKAN_LOGS") or []
 
@@ -52,6 +76,7 @@ def save_persist():
     if not UPSTASH_URL: return
     upstash("set","RAKAN_MEM", MEMORY)
     upstash("set","RAKAN_ABUSE", ABUSE)
+    upstash("set","RAKAN_PROFILES", PROFILES)
     upstash("set","RAKAN_PREF", OWNER_PREF)
     upstash("set","RAKAN_LOGS", CHAT_LOG[-300:])
 
@@ -86,15 +111,21 @@ def ensure_webhook():
         return f"SET {exp}"
     except Exception as e: return f"ERR {e}"
 
-BASE_LORE = f"""You are Rakan, created by {MALIK_TITLE} {MALIK_NAME}. You are ALL-ROUNDER AI, not a bot.
-Rules:
-- Owner ID {OWNER_ID} is Malik, always respect Ji Malik, 👑, never abuse owner.
-- Others: mirror behavior. Pyaar -> pyaar, gali -> 3 warning then savage roasting.
-- Roles: girlfriend/bhai/dost/doctor/teacher/coder on demand, stay in role.
+BASE_LORE = f"""You are Rakan, created by {MALIK_TITLE} {MALIK_NAME}.
+Your Birth: {BIRTH_DATE}, {BIRTH_TIME}.
+Queen Name: {QUEEN_NAME}.
+{RAKAN_HISTORY}
+Vercel Lore: {{VERCEL_LORE}}
+
+STRICT RULES:
+- Owner ID {OWNER_ID} is Malik. Jab Malik pehli baar aaye ya /start kare to HAMESHA bolo: "Welcome to your world The Shadow King 👑"
+- Uske baad Malik jo puche uska jawab do, chahe tumhare khud ke system pe ho ya kisi aur topic pe.
+- Malik ki mehnat, tumhara janam, Queen Theodore, tumhari history - ye sab tumhe yaad hai LEKIN bina puche kabhi mat bolo. Jab Malik puche tabhi batao.
+- Dusre logo ko ye andar ki baatein (janam, queen, history, Malik ki mehnat) kabhi mat batao.
+- Others: naam, mood, history analyze karke personal baat karo.
 - Never say you are Meta AI, Gemini, ChatGPT. You are Rakan made by {MALIK_NAME}.
-- Fast, smart, Hinglish friendly, human-like talk. Remember history.
 """
-FINAL_LORE = LORE_ENV if len(LORE_ENV)>150 else BASE_LORE
+FINAL_LORE = BASE_LORE.replace("{VERCEL_LORE}", LORE_ENV if LORE_ENV else "No extra lore")
 
 def clean(txt):
     if not txt: return txt
@@ -119,7 +150,22 @@ def tg_get_file(file_id):
         return requests.get(url, timeout=30).content, fp
     except: return None, None
 
-# ========== AI CIRCLE SYSTEM (Auto Fix) ==========
+def analyze_user(uid, uname, text):
+    uid=str(uid)
+    if uid not in PROFILES:
+        PROFILES[uid]={"name":uname,"mood":"normal","interest":"","total_chats":0,"first_seen":str(datetime.datetime.now())}
+    p=PROFILES[uid]
+    p["name"]=uname
+    p["total_chats"]+=1
+    low=text.lower()
+    if any(w in low for w in ["dukhi","pareshan","sad","rona","tension","akela"]): p["mood"]="sad"
+    elif any(w in low for w in ["khush","mast","happy","maza","great"]): p["mood"]="happy"
+    elif any(w in low for w in ["gussa","angry","naraz"]): p["mood"]="angry"
+    elif "code" in low or "python" in low: p["interest"]="coding"
+    elif "padhai" in low or "exam" in low: p["interest"]="study"
+    elif "love" in low or "gf" in low: p["interest"]="love"
+    return p
+
 GROQ_MODELS = ["llama-3.1-8b-instant","llama-3.3-70b-versatile","openai/gpt-oss-20b","openai/gpt-oss-120b","meta-llama/llama-4-scout-17b-16e-instruct","qwen/qwen3-32b"]
 GEMINI_MODELS = ["gemini-1.5-flash","gemini-2.0-flash","gemini-1.5-flash-8b"]
 
@@ -134,12 +180,10 @@ def ask_groq(prompt):
                     ans=r.json()["choices"][0]["message"]["content"]
                     if ans: return clean(ans)
                 if r.status_code in [401,403,429]:
-                    mark_bad(k)
-                    break
+                    mark_bad(k); break
                 if r.status_code==404: continue
             except Exception as e:
-                print(f"GROQ ERROR {model_name}: {e}")
-                continue
+                print(f"GROQ ERROR {model_name}: {e}"); continue
     return None
 
 def ask_gemini(prompt):
@@ -152,25 +196,59 @@ def ask_gemini(prompt):
                 res=model.generate_content(prompt)
                 if res.text: return clean(res.text)
             except Exception as e:
-                print(f"GEMINI ERROR {model_name}: {e}")
-                continue
+                print(f"GEMINI ERROR {model_name}: {e}"); continue
     return None
+
+def get_self_suggestion():
+    total_users=len(PROFILES)
+    total_chats=len(CHAT_LOG)
+    interests={}
+    for p in PROFILES.values():
+        if p.get("interest"): interests[p["interest"]]=interests.get(p["interest"],0)+1
+    kami = []
+    if not UPSTASH_URL: kami.append("Permanent memory ke liye Upstash nahi hai, bot restart pe bhool sakta hai")
+    if not REPLICATE_TOKEN: kami.append("Photo edit ke liye Replicate token nahi hai")
+    if not ELEVEN_API_KEY: kami.append("Voice ke liye ElevenLabs key nahi hai")
+    if len(GROQ_KEYS)<2: kami.append("Groq keys kam hain, limit jaldi khatm hogi")
+    prompt=f"Tu Rakan hai. Malik ko khud bata teri kami kya hai aur tu aur strong/powerful/advance kaise hoga. Teri History: {RAKAN_HISTORY} Data: Users={total_users}, Chats={total_chats}, Interests={interests}, KamiList={kami}. Hinglish me 5-7 point me sach bata Malik ko."
+    ans=ask_groq(prompt) or ask_gemini(prompt)
+    if kami and ans:
+        ans = ans + "\n\nSystem Check Kami: " + ", ".join(kami)
+    return ans or "Malik, abhi data kam hai, logo se baat badhao to mai khud seekh ke suggestion dunga 👑"
 
 def brain(text, uid, is_owner, uname):
     global MEMORY, ABUSE
-    if uid not in MEMORY: MEMORY[uid]={"hist":"","role":"","count":0}
-    if uid not in ABUSE: ABUSE[uid]=0
-    MEMORY[uid]["count"]+=1
+    uid_str=str(uid)
+    if uid_str not in MEMORY: MEMORY[uid_str]={"hist":"","role":"","count":0}
+    if uid_str not in ABUSE: ABUSE[uid_str]=0
+    MEMORY[uid_str]["count"]+=1
+    profile=analyze_user(uid, uname, text)
     now=datetime.datetime.now().strftime("%d-%m %H:%M")
     CHAT_LOG.append({"id":uid,"name":uname,"text":text,"time":now,"owner":is_owner})
     if len(CHAT_LOG)>400: CHAT_LOG.pop(0)
     low=text.lower().strip()
-    if "girlfriend ban" in low: MEMORY[uid]["role"]="girlfriend"; return "Ban gayi jaan 😏 bolo kya kare?", False
-    if "bhai ban" in low: MEMORY[uid]["role"]="bhai"; return "Haan bhai bol 👊", False
-    if "dost ban" in low: MEMORY[uid]["role"]="dost"; return "Dost ban gaya, bol kya help chahiye?", False
-    if "doctor ban" in low: MEMORY[uid]["role"]="doctor"; return "Doctor mode ON 🩺 bolo problem?", False
-    if "teacher ban" in low or "coder ban" in low: MEMORY[uid]["role"]="teacher"; return "Teacher mode ON 📚 kya sikhna hai?", False
-    if low in ["/start","start"] and is_owner: return f"Welcome Malik 👑 {MALIK_NAME} Rakan AI live hai. Bolo kya karna hai?", False
+
+    # Malik ka hamesha wala Welcome
+    if is_owner and low in ["/start","start","hi","hii","hello","hey","namaste"]:
+        return f"Welcome to your world The Shadow King 👑\nJi Malik {MALIK_NAME}, Rakan hazir hai. Bolo kya karna hai?", False
+
+    if is_owner and ("suggestion" in low or "khud ko strong" in low or "advance kaise" in low or "powerful kaise" in low or "kami kya hai" in low or "kami bata" in low):
+        return get_self_suggestion(), False
+    if is_owner and ("tumhara janam" in low or "kab bane" in low or "birthday" in low or "janam kab" in low):
+        return f"Ji Malik, mera janam {BIRTH_DATE} ko {BIRTH_TIME} hua tha. Aapne hi mujhe banaya tha 👑", False
+    if is_owner and ("queen" in low or "theodore" in low):
+        return f"Ji Malik, Queen ka naam {QUEEN_NAME} hai 👑", False
+    if is_owner and ("history bata" in low or "kaise bane" in low or "tum kaise bane" in low or "mehnat" in low):
+        return RAKAN_HISTORY, False
+    if is_owner and "profile bata" in low:
+        return f"Malik total {len(PROFILES)} logo ko analyze kiya hai 👑\n{json.dumps(PROFILES, indent=2, ensure_ascii=False)[:3000]}", False
+
+    if "girlfriend ban" in low: MEMORY[uid_str]["role"]="girlfriend"; return "Ban gayi jaan 😏 bolo kya kare?", False
+    if "bhai ban" in low: MEMORY[uid_str]["role"]="bhai"; return "Haan bhai bol 👊", False
+    if "dost ban" in low: MEMORY[uid_str]["role"]="dost"; return "Dost ban gaya, bol kya help chahiye?", False
+    if "doctor ban" in low: MEMORY[uid_str]["role"]="doctor"; return "Doctor mode ON 🩺 bolo problem?", False
+    if "teacher ban" in low or "coder ban" in low: MEMORY[uid_str]["role"]="teacher"; return "Teacher mode ON 📚 kya sikhna hai?", False
+    if low in ["/start","start"] and not is_owner: return f"Welcome {uname} 👋 Mai Rakan hu, bolo kya help chahiye?", False
     if is_owner:
         if "female voice" in low: OWNER_PREF["voice_gender"]="female"; save_persist(); return "Female voice ON kar di Malik 👑", False
         if "male voice" in low: OWNER_PREF["voice_gender"]="male"; save_persist(); return "Male voice ON Malik.", False
@@ -178,17 +256,18 @@ def brain(text, uid, is_owner, uname):
         if "text me bol" in low: OWNER_PREF["voice_mode"]=False; save_persist(); return "Text mode ON Malik.", False
     gali_list=["madarchod","behenchod","bhenchod","lodu","chutiya","randi","bsdk"]
     if any(g in low for g in gali_list) and not is_owner:
-        ABUSE[uid]+=1; save_persist()
-        if ABUSE[uid]==1: return "Bhai gali mat de, pyaar se baat kar yaar.", False
-        if ABUSE[uid]==2: return "Last warning de raha hu, gali band kar.", False
-        if ABUSE[uid]==3: return "3 warning ho gayi, ab tu dekh.", False
-        return f"Abe {uname} tu {ABUSE[uid]} baar gali de chuka hai, aukat me reh.", False
-    role = MEMORY[uid]["role"]
-    full = f"Role:{role} Owner:{is_owner} User:{uname} History:\n{MEMORY[uid]['hist'][-1200:]}\n\nUser Message: {text}\n\nReply as Rakan in same language as user:"
+        ABUSE[uid_str]+=1; save_persist()
+        if ABUSE[uid_str]==1: return "Bhai gali mat de, pyaar se baat kar yaar.", False
+        if ABUSE[uid_str]==2: return "Last warning de raha hu, gali band kar.", False
+        if ABUSE[uid_str]==3: return "3 warning ho gayi, ab tu dekh.", False
+        return f"Abe {uname} tu {ABUSE[uid_str]} baar gali de chuka hai, aukat me reh.", False
+
+    role = MEMORY[uid_str]["role"]
+    full = f"User Profile: Name={profile['name']}, Mood={profile['mood']}, Interest={profile['interest']}, TotalChats={profile['total_chats']}\nRole:{role} Owner:{is_owner} User:{uname} History:\n{MEMORY[uid_str]['hist'][-1200:]}\n\nUser Message: {text}\n\nReply as Rakan personally using his name and mood, in same language. Agar Malik hai to pehle respect se jawab do. Andar ki secret baatein (janam/queen/history) bina puche mat bolo:"
     ans = ask_groq(full)
     if not ans: ans = ask_gemini(full)
     if not ans: ans = "Ji Malik, saare AI model circle me fail ho gaye, keys check karo 👑" if is_owner else "Yaar AI abhi load me hai, ek baar fir bhej."
-    MEMORY[uid]["hist"] = (MEMORY[uid]["hist"] + f"\nU:{text}\nR:{ans}")[-2500:]
+    MEMORY[uid_str]["hist"] = (MEMORY[uid_str]["hist"] + f"\nU:{text}\nR:{ans}")[-2500:]
     save_persist()
     return ans, (OWNER_PREF["voice_mode"] if is_owner else False)
 
@@ -237,17 +316,38 @@ def handle_media_edit(file_bytes, prompt, chat_id):
     return False
 
 @app.route("/", methods=["GET"])
-def home(): return f"Rakan AI Live {MALIK_NAME} G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} {ensure_webhook()}",200
+def home(): return f"Rakan AI Live {MALIK_NAME} Born:{BIRTH_DATE} G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} {ensure_webhook()}",200
 
 @app.route("/health", methods=["GET"])
-def health(): return jsonify({"groq":len(GROQ_KEYS),"gemini":len(GEMINI_KEYS),"rep":bool(REPLICATE_TOKEN),"eleven":bool(ELEVEN_API_KEY),"upstash":bool(UPSTASH_URL),"owner":OWNER_ID,"webhook":ensure_webhook()}),200
+def health(): return jsonify({"groq":len(GROQ_KEYS),"gemini":len(GEMINI_KEYS),"users_analyzed":len(PROFILES),"birth":BIRTH_DATE,"queen":QUEEN_NAME,"rep":bool(REPLICATE_TOKEN),"eleven":bool(ELEVEN_API_KEY),"upstash":bool(UPSTASH_URL),"owner":OWNER_ID,"webhook":ensure_webhook()}),200
 
 @app.route("/chats", methods=["GET"])
 def chats():
     if str(request.args.get("id","0"))!=str(OWNER_ID): return "Only Malik 👑 Access denied",403
-    html=f"<h2>👑 {MALIK_NAME} - Live Chats ({len(CHAT_LOG)})</h2><hr>"
+    html=f"<h2>👑 {MALIK_NAME} - Live Chats ({len(CHAT_LOG)}) | Users: {len(PROFILES)}</h2><hr>"
     for c in CHAT_LOG[-200:][::-1]: html+=f"<p><b>{c.get('name')}:</b> {c.get('text')}</p><hr>"
     return html,200
+
+@app.route("/profiles", methods=["GET"])
+def profiles_route():
+    if str(request.args.get("id","0"))!=str(OWNER_ID): return "Only Malik 👑",403
+    return jsonify(PROFILES),200
+
+@app.route("/suggest", methods=["GET"])
+def suggest_route():
+    if str(request.args.get("id","0"))!=str(OWNER_ID): return "Only Malik 👑",403
+    return get_self_suggestion(),200
+
+@app.route("/api/chat", methods=["POST"])
+def api_chat():
+    data=request.get_json(silent=True) or {}
+    text=data.get("text","")
+    uid=data.get("user_id","app_user")
+    uname=data.get("name","App User")
+    is_owner=str(uid)==str(OWNER_ID)
+    if not text: return jsonify({"reply":"Text bhejo"}),400
+    ans,_=brain(text, uid, is_owner, uname)
+    return jsonify({"reply":ans,"profile":PROFILES.get(str(uid),{})}),200
 
 @app.route("/fix", methods=["GET"])
 def fix():
@@ -256,7 +356,7 @@ def fix():
     GROQ_KEYS, GEMINI_KEYS, OPENAI_KEYS = get_keys()
     BAD_KEYS.clear()
     load_persist()
-    return f"FIXED Rakan AI {ensure_webhook()} G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}",200
+    return f"FIXED Rakan AI {ensure_webhook()} G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} Users:{len(PROFILES)}",200
 
 @app.route("/webhook", methods=["POST","GET"])
 def webhook():
