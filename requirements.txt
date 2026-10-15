@@ -1,4 +1,4 @@
-Flask
-requests
-google-generativeai
-groq
+Flask==3.0.3
+requests==2.32.3
+google-generativeai==0.8.3
+gunicorn==22.1.0
