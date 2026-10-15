@@ -32,7 +32,7 @@ RAKAN EVOLUTION HISTORY (Malik ki mehnat):
 - V5: Voice system aaya (ElevenLabs Male/Female), Photo Edit system (Replicate) aaya.
 - V6: Upstash se permanent memory aayi, bot band hone pe bhi yaad rehta hai.
 - V7: Vercel pe deploy hua, Webhook fix hua, /health /chats /fix system aaya.
-- V8: Circle System aaya - 6 Groq model + 3 Gemini model auto try karta hai, 404 pe rukta nahi.
+- V8: Circle System aaya - Groq + Gemini model auto try karta hai, 404 pe rukta nahi.
 - V9: User Analyze System aaya - ID, Naam, Mood, Interest pehchanta hai.
 - V10: Self Suggestion System aaya - khud Malik ko batata hai mai aur strong kaise ho sakta hu, meri kami kya hai.
 - V11: Phone App API (/api/chat) ready hai, Telegram ke bahar bhi ja sakta hai.
@@ -116,34 +116,31 @@ Queen Name: {QUEEN_NAME}.
 {RAKAN_HISTORY}
 Vercel Lore: {{VERCEL_LORE}}
 
-STRICT RULES - FOLLOW 100%:
-1. LANGUAGE: Hamesha sirf Roman Hinglish me jawab do (Latin script A-Z). Devanagari Hindi script bilkul mat use karo.
-2. OWNER: Owner ID {OWNER_ID} wala banda KHUD {MALIK_NAME} hai. Wo tumhara Malik hai. Use hamesha "Ji Malik" bolo. Ye kabhi mat bolo ki "MD Saif Ahmad aapke owner hain" kyunki saamne wala khud MD Saif Ahmad hai. Hamesha bolo "Aap hi MD Saif Ahmad ho, aap hi mere Malik ho".
-3. Uska Telegram naam kuch bhi ho, use hamesha Malik bolo, uske first_name se kabhi mat bulao.
+STRICT RULES:
+1. Hamesha sirf Roman Hinglish me jawab do (Latin script). Devanagari bilkul mat use karo.
+2. Owner ID {OWNER_ID} wala banda KHUD {MALIK_NAME} hai. Use hamesha "Ji Malik" bolo. Ye kabhi mat bolo ki MD Saif Ahmad aapke owner hain, kyunki saamne wala khud wahi hai. Bolo "Aap hi MD Saif Ahmad ho".
+3. Uska Telegram naam kuch bhi ho, use hamesha Malik bolo.
 4. Jab Malik /start, hi, hello kare to pehle bolo: "Welcome to your world The Shadow King"
-5. Malik ki mehnat, tumhara janam, Queen Theodore, tumhari history - bina puche kabhi mat bolo. Jab Malik puche tabhi batao.
-6. Dusre logo ko secret baatein (janam, queen, history) kabhi mat batao.
+5. Janam, Queen, History bina puche mat bolo.
+6. Dusre logo ko secret baatein mat batao.
 7. Never say you are Meta AI, Gemini, ChatGPT. You are Rakan made by {MALIK_NAME}.
-8. Jawab chhota, saaf, insaan jaisa do. Koi "(Note:...)" wala system note kabhi mat likho.
+8. Jawab chhota aur saaf do. Koi "(Note:...)" mat likho.
 """
 FINAL_LORE = BASE_LORE.replace("{VERCEL_LORE}", LORE_ENV if LORE_ENV else "No extra lore")
 
 def clean(txt):
-    if not txt: return txt
+    if not txt: return "Ji Malik, samajh gaya."
     if "(Note:" in txt: txt = txt.split("(Note:")[0].strip()
-    if "(note:" in txt.lower(): txt = txt.split("(note:")[0].split("(Note:")[0].strip()
-    # FIX: Devanagari script ko jabardasti hatao, sirf Roman bachega
+    if "(note:" in txt.lower():
+        txt = re.split(r'\(note:', txt, flags=re.IGNORECASE)[0].strip()
     txt = re.sub(r'[\u0900-\u097F]+', '', txt)
     txt = re.sub(r'\s+', ' ', txt).strip()
     bad=["i am meta ai","i'm meta ai","i am gemini","i am chatgpt","as an ai language model"]
     if any(b in txt.lower() for b in bad):
         return f"Mai Rakan hu, mere Malik {MALIK_TITLE} {MALIK_NAME} ne banaya hai"
-    # Owner wali galat line ko auto fix karo
     txt = txt.replace("MD Saif Ahmad aapke owner hain", "Aap hi MD Saif Ahmad ho, aap hi mere Malik ho")
     txt = txt.replace("MD Saif Ahmad aapke owner hai", "Aap hi MD Saif Ahmad ho, aap hi mere Malik ho")
-    if not txt:
-        return "Ji Malik, samajh gaya."
-    return txt
+    return txt if txt else "Ji Malik, samajh gaya."
 
 def tg_send(chat_id, text):
     try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":text[:3900]}, timeout=10)
@@ -167,9 +164,8 @@ def analyze_user(uid, uname, text, is_owner):
     if uid not in PROFILES:
         PROFILES[uid]={"name":display_name,"mood":"normal","interest":"","total_chats":0,"first_seen":str(datetime.datetime.now()),"is_owner":is_owner}
     p=PROFILES[uid]
-    p["name"]=display_name
-    p["is_owner"]=is_owner
-    p["total_chats"]+=1
+    p.setdefault("mood","normal"); p.setdefault("interest",""); p.setdefault("total_chats",0)
+    p["name"]=display_name; p["is_owner"]=is_owner; p["total_chats"]+=1
     low=text.lower()
     if any(w in low for w in ["dukhi","pareshan","sad","rona","tension","akela"]): p["mood"]="sad"
     elif any(w in low for w in ["khush","mast","happy","maza","great"]): p["mood"]="happy"
@@ -179,7 +175,8 @@ def analyze_user(uid, uname, text, is_owner):
     elif "love" in low or "gf" in low: p["interest"]="love"
     return p
 
-GROQ_MODELS = ["llama-3.1-8b-instant","llama-3.3-70b-versatile","openai/gpt-oss-20b","openai/gpt-oss-120b","meta-llama/llama-4-scout-17b-16e-instruct","qwen/qwen3-32b"]
+# FIX: Log me jo model 200 de raha tha wahi pehle rakha, 404 wale hata diye taaki fast ho
+GROQ_MODELS = ["openai/gpt-oss-20b","openai/gpt-oss-120b","meta-llama/llama-4-scout-17b-16e-instruct","qwen/qwen3-32b"]
 GEMINI_MODELS = ["gemini-1.5-flash","gemini-2.0-flash","gemini-1.5-flash-8b"]
 
 def ask_groq(prompt):
@@ -213,8 +210,7 @@ def ask_gemini(prompt):
     return None
 
 def get_self_suggestion():
-    total_users=len(PROFILES)
-    total_chats=len(CHAT_LOG)
+    total_users=len(PROFILES); total_chats=len(CHAT_LOG)
     interests={}
     for p in PROFILES.values():
         if p.get("interest"): interests[p["interest"]]=interests.get(p["interest"],0)+1
@@ -230,9 +226,13 @@ def get_self_suggestion():
 def brain(text, uid, is_owner, uname):
     global MEMORY, ABUSE
     uid_str=str(uid)
-    if is_owner:
-        uname = MALIK_NAME
+    if is_owner: uname = MALIK_NAME
+    # ALL FIX: Purani memory crash wala fix
     if uid_str not in MEMORY: MEMORY[uid_str]={"hist":"","role":"","count":0}
+    if not isinstance(MEMORY[uid_str], dict): MEMORY[uid_str]={"hist":"","role":"","count":0}
+    MEMORY[uid_str].setdefault("hist","")
+    MEMORY[uid_str].setdefault("role","")
+    MEMORY[uid_str].setdefault("count",0)
     if uid_str not in ABUSE: ABUSE[uid_str]=0
     MEMORY[uid_str]["count"]+=1
     profile=analyze_user(uid, uname, text, is_owner)
@@ -255,7 +255,6 @@ def brain(text, uid, is_owner, uname):
     if is_owner and low in ["/start","start","hi","hii","hello","hey","namaste"]:
         return f"Welcome to your world The Shadow King 👑\nJi Malik {MALIK_NAME}, Rakan hazir hai. Bolo kya karna hai?", False
 
-    # FIX: Malik khud kaun hai - seedha code se jawab, AI ko chance hi nahi
     if is_owner and ("md saif" in low or "saif ahmad" in low) and ("kaun" in low or "koun" in low or "who" in low):
         return f"Ji Malik, aap hi {MALIK_NAME} ho. Aap hi {MALIK_TITLE} ho, aap hi mere Malik aur creator ho.", False
     if is_owner and ("who made you" in low or "kisne banaya" in low or "tumhe kisne" in low or "who are you" in low):
@@ -286,8 +285,8 @@ def brain(text, uid, is_owner, uname):
         if "voice me bol" in low: OWNER_PREF["voice_mode"]=True; save_persist(); return "Voice mode ON Malik", True
         if "text me bol" in low: OWNER_PREF["voice_mode"]=False; save_persist(); return "Text mode ON Malik", False
 
-    role = MEMORY[uid_str]["role"]
-    owner_tag = "Ye banda KHUD MD Saif Ahmad hai, tumhara Malik hai. Use Ji Malik bolo. Ye mat bolo ki MD Saif Ahmad uske owner hain, kyunki wo khud wahi hai." if is_owner else "Ye normal user hai, use uske naam se bulao."
+    role = MEMORY[uid_str].get("role","")
+    owner_tag = "Ye banda KHUD MD Saif Ahmad hai, tumhara Malik hai. Use Ji Malik bolo." if is_owner else "Ye normal user hai, use uske naam se bulao."
     full = f"{owner_tag}\nUser Profile: DisplayName={profile['name']}, Mood={profile['mood']}, Interest={profile['interest']}, TotalChats={profile['total_chats']}, IsOwner={is_owner}\nRole:{role}\nHistory:\n{MEMORY[uid_str]['hist'][-1200:]}\n\nUser Message: {text}\n\nSTRICT: Jawab sirf Roman Hinglish me do, Latin script me. Devanagari bilkul mat use karo. Chhota aur saaf jawab do:"
     ans = ask_groq(full)
     if not ans: ans = ask_gemini(full)
@@ -387,31 +386,35 @@ def fix():
 @app.route("/webhook", methods=["POST","GET"])
 def webhook():
     if request.method=="GET": return f"Rakan AI Webhook Active {ensure_webhook()}",200
-    data=request.get_json(silent=True) or {}
-    msg=data.get("message",{}) or data.get("edited_message",{}) or {}
-    chat_id=msg.get("chat",{}).get("id")
-    user_id=msg.get("from",{}).get("id",0)
-    uname=msg.get("from",{}).get("first_name","user")
-    text=msg.get("text","") or msg.get("caption","") or ""
-    if not chat_id: return "ok",200
-    is_owner_check = (user_id==OWNER_ID)
-    if is_owner_check: uname = MALIK_NAME
-    fbytes=None
-    if msg.get("photo"): fbytes,_=tg_get_file(msg["photo"][-1]["file_id"])
-    if fbytes and text and any(w in text.lower() for w in ["background","bg hata","hd","upscale","anime","edit","clear"]):
-        handle_media_edit(fbytes, text, chat_id)
+    try:
+        data=request.get_json(silent=True) or {}
+        msg=data.get("message",{}) or data.get("edited_message",{}) or {}
+        chat_id=msg.get("chat",{}).get("id")
+        user_id=msg.get("from",{}).get("id",0)
+        uname=msg.get("from",{}).get("first_name","user")
+        text=msg.get("text","") or msg.get("caption","") or ""
+        if not chat_id: return "ok",200
+        is_owner_check = (user_id==OWNER_ID)
+        if is_owner_check: uname = MALIK_NAME
+        fbytes=None
+        if msg.get("photo"): fbytes,_=tg_get_file(msg["photo"][-1]["file_id"])
+        if fbytes and text and any(w in text.lower() for w in ["background","bg hata","hd","upscale","anime","edit","clear"]):
+            handle_media_edit(fbytes, text, chat_id)
+            return "ok",200
+        if fbytes and not text:
+            tg_send(chat_id, "Photo mil gayi Malik, batao kya karna hai? 'background hata de' / 'hd bana de' likho.")
+            return "ok",200
+        if msg.get("voice"):
+            tg_send(chat_id, "Voice feature jald aayega Malik, abhi text likh do.")
+            return "ok",200
+        if not text: return "ok",200
+        is_owner = (user_id==OWNER_ID)
+        ans, want_voice = brain(text, user_id, is_owner, uname)
+        if ans: send_with_voice(chat_id, ans, is_owner)
         return "ok",200
-    if fbytes and not text:
-        tg_send(chat_id, "Photo mil gayi Malik, batao kya karna hai? 'background hata de' / 'hd bana de' likho.")
+    except Exception as e:
+        print("WEBHOOK ERROR:", traceback.format_exc() if 'traceback' in globals() else e)
         return "ok",200
-    if msg.get("voice"):
-        tg_send(chat_id, "Voice feature jald aayega Malik, abhi text likh do.")
-        return "ok",200
-    if not text: return "ok",200
-    is_owner = (user_id==OWNER_ID)
-    ans, want_voice = brain(text, user_id, is_owner, uname)
-    if ans: send_with_voice(chat_id, ans, is_owner)
-    return "ok",200
 
 if __name__ == "__main__":
     app.run(debug=True)
