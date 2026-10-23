@@ -143,9 +143,18 @@ def analyze_user(uid, uname, text, is_owner):
     elif any(w in low for w in ["gussa","angry","naraz"]): p["mood"]="angry"
     return p
 
-GROQ_MODELS = ["openai/gpt-oss-20b","openai/gpt-oss-120b","meta-llama/llama-4-scout-17b-16e-instruct","qwen/qwen3-32b"]
+GROQ_MODELS = ["openai/gpt-oss-120b","openai/gpt-oss-20b","meta-llama/llama-4-scout-17b-16e-instruct","qwen/qwen3-32b","llama-3.3-70b-versatile","llama-3.1-8b-instant"]
 OPENAI_MODELS = ["gpt-4o-mini","gpt-4o","gpt-3.5-turbo"]
-GEMINI_MODELS = ["gemini-1.5-flash","gemini-2.0-flash","gemini-1.5-flash-8b"]
+GEMINI_MODELS=[
+"gemini-3.8-flash",
+"gemini-3.7-flash", 
+"gemini-3.5-flash",
+"gemini-3.5-flash-lite",
+"gemini-3.1-flash-lite",
+"gemini-3.1-pro-preview",
+"gemini-2.5-flash",
+"gemini-2.5-pro"
+]
 
 def ask_groq(prompt):
     global LAST_ERROR
