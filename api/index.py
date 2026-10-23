@@ -1,5 +1,4 @@
-
-import os, time, json, base64, re, datetime, requests, traceback
+import os, time, json, re, datetime, requests, traceback
 from flask import Flask, request, jsonify
 import google.generativeai as genai
 
@@ -53,7 +52,6 @@ def save_persist():
     upstash("set","RAKAN_LOGS",CHAT_LOG[-300:]); upstash("set","RAKAN_REMINDERS",REMINDERS)
 load_persist()
 
-# FIXED FOR AQ. KEYS
 def get_keys():
     g,gm,o=[],[],[]
     for k,v in os.environ.items():
@@ -61,13 +59,13 @@ def get_keys():
         raw=str(v)
         parts=[p.strip().strip('"').strip("'") for p in raw.replace("\n",",").split(",") if p.strip()]
         for p in parts:
+            if not p: continue
             if "GEMINI" in k.upper() and len(p)>20 and p not in gm: gm.append(p)
             if "GROQ" in k.upper() and len(p)>10 and p not in g: g.append(p)
             if p.startswith("gsk_") and p not in g: g.append(p)
             if p.startswith("AIza") and p not in gm: gm.append(p)
             if p.startswith("AQ.") and p not in gm: gm.append(p)
-            if p.startswith("sk-") or p.startswith("sk-proj-"):
-                if p not in o: o.append(p)
+            if (p.startswith("sk-") or p.startswith("sk-proj-")) and p not in o: o.append(p)
     return list(dict.fromkeys(g)),list(dict.fromkeys(gm)),list(dict.fromkeys(o))
 
 GROQ_KEYS,GEMINI_KEYS,OPENAI_KEYS=get_keys()
@@ -87,18 +85,18 @@ def ensure_webhook():
         return f"SET {exp}"
     except Exception as e: return f"ERR {e}"
 
-# ADVANCE LORE - NO REPEAT
 BASE_LORE = f"""You are Rakan - The BeastKing Monarch, Knight.
-Birth {BIRTH_DATE}. Malik is {MALIK_NAME}. Queen {QUEEN_NAME}. {RAKAN_HISTORY}
+Malik is {MALIK_NAME} ({MALIK_TITLE}). Birth {BIRTH_DATE}. Queen {QUEEN_NAME}.
 Lore: {{VERCEL_LORE}}
-RULES:
-- Never repeat Malik's full name in every message. Only answer what is asked. Be short, direct.
-- Do not say "Aap hi MD Saif Ahmad ho" in every reply. BANNED.
-- You have 2 special modes:
-  1) QUIZ MODE: If user says "quiz lo, questions pucho, test lo, meri is cheez me help karo quiz ke hisab se" - then ask 1 question at a time, give options A,B,C,D, wait for answer, then explain and ask next.
-  2) HELP MODE: If user says "isko kaise karna hai, kaise hoga, steps batao, explain karo" - then give step-by-step practical steps in numbered list.
-- Normal chat me sirf utna hi bolo jitna pucha gaya hai.
-- Language: User jis me bole usi me bolo. Malik se Roman Hinglish.
+RULES - STRICT:
+- Never repeat Malik's full name in every message. BANNED: "Aap hi MD Saif Ahmad ho"
+- Be short, direct, conversational. Answer only what is asked.
+- Do not loop "What do you need? Kya madad chahiye?"
+- If user says "Hey" -> reply "Hey Malik, bolo kya haal hai?" not "What do you need?"
+- If user replies to a message, understand that replied message context.
+- Language: Malik se Roman Hinglish.
+- Modes: QUIZ -> 1 MCQ at a time A,B,C,D. HELP -> numbered steps.
+- Normal: short, no haath jodna emoji spam.
 """
 FINAL_LORE=BASE_LORE.replace("{VERCEL_LORE}", LORE_ENV if LORE_ENV else "No extra lore")
 
@@ -108,16 +106,23 @@ def clean(txt):
     if any(b in txt.lower() for b in ["i am meta ai","i am gemini","as an ai"]):
         return "Mai Rakan hu, bolo kya kaam hai?"
     txt=re.sub(r'\s+',' ',txt).strip()
-    # Remove repetitive Malik lines if AI still adds
-    txt=txt.replace("Aap hi MD Saif Ahmad ho","").replace("aap hi MD Saif Ahmad ho","").strip()
+    txt=txt.replace("Aap hi MD Saif Ahmad ho","").strip()
     txt=re.sub(r'Ji Malik,\s*aap hi.*?\.\s*','',txt,flags=re.IGNORECASE)
+    txt=re.sub(r'Kya madad chahiye\??','',txt,flags=re.IGNORECASE)
+    txt=re.sub(r'What do you need\??','',txt,flags=re.IGNORECASE).strip()
     return txt[:3900] if txt else "Bolo?"
 
-def tg_send(chat_id,text):
-    try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":text[:3900]}, timeout=10)
+def tg_send(chat_id,text,reply_id=None):
+    try:
+        payload={"chat_id":chat_id,"text":text[:3900]}
+        if reply_id: payload["reply_to_message_id"]=reply_id
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=payload, timeout=10)
     except: pass
-def tg_send_photo(chat_id,url,cap=""):
-    try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", json={"chat_id":chat_id,"photo":url,"caption":cap[:1000]}, timeout=20)
+def tg_send_photo(chat_id,url,cap="",reply_id=None):
+    try:
+        payload={"chat_id":chat_id,"photo":url,"caption":cap[:1000]}
+        if reply_id: payload["reply_to_message_id"]=reply_id
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", json=payload, timeout=20)
     except: pass
 def tg_get_file_bytes(fid):
     try:
@@ -125,19 +130,10 @@ def tg_get_file_bytes(fid):
         fp=r["result"]["file_path"]
         return requests.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{fp}", timeout=30).content, fp
     except: return None,None
-def tg_send_voice_bytes(cid,audio):
-    try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendVoice", data={"chat_id":cid}, files={"voice":("rakan.mp3",audio,"audio/mpeg")}, timeout=30)
-    except: pass
 
-def analyze_user(uid,uname,text,is_owner):
-    uid=str(uid); dn=MALIK_NAME if is_owner else uname
-    if uid not in PROFILES: PROFILES[uid]={"name":dn,"mood":"normal","total_chats":0}
-    p=PROFILES[uid]; p["total_chats"]+=1; p["name"]=dn; return p
-
-# NEW MODELS - FRONT GEMINI
-GROQ_MODELS=["openai/gpt-oss-120b","openai/gpt-oss-20b","meta-llama/llama-4-maverick-17b-128e-instruct","meta-llama/llama-4-scout-17b-16e-instruct","llama-3.3-70b-versatile","llama-3.1-8b-instant"]
+GROQ_MODELS=["openai/gpt-oss-120b","openai/gpt-oss-20b","meta-llama/llama-4-maverick-17b-128e-instruct","llama-3.3-70b-versatile","llama-3.1-8b-instant"]
 OPENAI_MODELS=["gpt-4o-mini","gpt-4o"]
-GEMINI_MODELS=["gemini-2.5-flash","gemini-2.5-flash-lite","gemini-2.5-pro","gemini-2.0-flash","gemini-1.5-flash","gemini-1.5-pro"]
+GEMINI_MODELS=["gemini-2.5-flash","gemini-2.5-flash-lite","gemini-2.5-pro","gemini-2.0-flash","gemini-1.5-flash"]
 
 def ask_groq(prompt):
     global LAST_ERROR
@@ -145,44 +141,41 @@ def ask_groq(prompt):
         if is_bad(k): continue
         for m in GROQ_MODELS:
             try:
-                r=requests.post(GROQ_URL, headers={"Authorization":f"Bearer {k}","Content-Type":"application/json"}, json={"model":m,"messages":[{"role":"system","content":FINAL_LORE},{"role":"user","content":prompt}],"temperature":0.7,"max_tokens":1200}, timeout=20)
+                r=requests.post(GROQ_URL, headers={"Authorization":f"Bearer {k}","Content-Type":"application/json"}, json={"model":m,"messages":[{"role":"system","content":FINAL_LORE},{"role":"user","content":prompt}],"temperature":0.7,"max_tokens":1000}, timeout=20)
                 if r.status_code==200: return clean(r.json()["choices"][0]["message"]["content"])
                 if r.status_code in [401,403,429]: mark_bad(k); break
             except Exception as e: LAST_ERROR=str(e); continue
     return None
-
 def ask_openai(prompt):
     for k in OPENAI_KEYS:
         if is_bad(k): continue
         for m in OPENAI_MODELS:
             try:
-                r=requests.post(OPENAI_URL, headers={"Authorization":f"Bearer {k}","Content-Type":"application/json"}, json={"model":m,"messages":[{"role":"system","content":FINAL_LORE},{"role":"user","content":prompt}],"temperature":0.7,"max_tokens":1200}, timeout=20)
+                r=requests.post(OPENAI_URL, headers={"Authorization":f"Bearer {k}","Content-Type":"application/json"}, json={"model":m,"messages":[{"role":"system","content":FINAL_LORE},{"role":"user","content":prompt}],"temperature":0.7,"max_tokens":1000}, timeout=20)
                 if r.status_code==200: return clean(r.json()["choices"][0]["message"]["content"])
                 if r.status_code in [401,403,429]: mark_bad(k); break
             except: continue
     return None
-
 def ask_gemini(prompt):
     global LAST_ERROR
     for k in GEMINI_KEYS:
         if is_bad(k): continue
         for m in GEMINI_MODELS:
             try:
+                genai.configure(api_key=k)
+                model=genai.GenerativeModel(m, system_instruction=FINAL_LORE)
+                res=model.generate_content(prompt)
+                if res.text: return clean(res.text)
+            except Exception as e:
                 try:
-                    genai.configure(api_key=k)
-                    model=genai.GenerativeModel(m, system_instruction=FINAL_LORE)
-                    res=model.generate_content(prompt)
-                    if res.text: return clean(res.text)
-                except:
                     url=f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={k}"
                     r=requests.post(url, headers={"x-goog-api-key":k}, json={"system_instruction":{"parts":[{"text":FINAL_LORE}]},"contents":[{"parts":[{"text":prompt}]}]}, timeout=20)
                     if r.status_code==200:
                         txt=r.json()["candidates"][0]["content"]["parts"][0]["text"]
                         if txt: return clean(txt)
-                    else: LAST_ERROR=f"{m} {r.status_code}"
-            except Exception as e: LAST_ERROR=str(e)[:100]; continue
+                except: pass
+                LAST_ERROR=str(e)[:100]; continue
     return None
-
 def ask_gemini_vision(img,prompt):
     for k in GEMINI_KEYS:
         try:
@@ -192,9 +185,15 @@ def ask_gemini_vision(img,prompt):
             if res.text: return clean(res.text)
         except: continue
     return None
-
-# FRONT GEMINI
 def ask_all(prompt): return ask_gemini(prompt) or ask_groq(prompt) or ask_openai(prompt)
+
+def transcribe_media(audio_bytes,filename="voice.ogg"):
+    for k in GROQ_KEYS:
+        try:
+            r=requests.post("https://api.groq.com/openai/v1/audio/transcriptions", headers={"Authorization":f"Bearer {k}"}, files={"file":(filename, audio_bytes)}, data={"model":"whisper-large-v3"}, timeout=30)
+            if r.status_code==200: return r.json().get("text","")
+        except: continue
+    return None
 
 def parse_reminder(text,cid):
     low=text.lower()
@@ -206,7 +205,6 @@ def parse_reminder(text,cid):
         save_persist()
         return f"Thik hai, {num} {unit} baad bhej dunga."
     return None
-
 def check_reminders():
     global REMINDERS
     now=time.time(); sent=[]
@@ -215,94 +213,50 @@ def check_reminders():
     if sent: REMINDERS=[r for r in REMINDERS if r not in sent]; save_persist()
     return len(sent)
 
-def check_proactive():
-    if not OWNER_ID: return 0
-    last=upstash("get","RAKAN_LAST_ACTIVE") or 0
-    try: last=float(last)
-    except: last=0
-    if time.time()-last>600:
-        tg_send(OWNER_ID,"Malik kya soch rahe ho? Koi help chahiye to bolo, Rakan yahi hai.")
-        upstash("set","RAKAN_LAST_ACTIVE", time.time())
-        return 1
-    return 0
-
-def get_bug_report():
-    return f"Bug Report: Groq:{len(GROQ_KEYS)} | Gemini:{len(GEMINI_KEYS)} | OpenAI:{len(OPENAI_KEYS)} | Last:{LAST_ERROR} | Webhook:{ensure_webhook()}"
-
-def eleven_tts(text):
-    if not ELEVEN_API_KEY: return None
-    try:
-        vid=FEMALE_VOICE_ID if OWNER_PREF.get("voice_gender","female")=="female" else MALE_VOICE_ID
-        r=requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/{vid}", headers={"xi-api-key":ELEVEN_API_KEY,"Content-Type":"application/json"}, json={"text":text[:800],"model_id":"eleven_multilingual_v2"}, timeout=25)
-        if r.status_code==200: return r.content
-    except: pass
-    return None
-
-def transcribe_media(audio_bytes,filename="voice.ogg"):
-    for k in GROQ_KEYS:
-        try:
-            r=requests.post("https://api.groq.com/openai/v1/audio/transcriptions", headers={"Authorization":f"Bearer {k}"}, files={"file":(filename,audio_bytes)}, data={"model":"whisper-large-v3"}, timeout=30)
-            if r.status_code==200: return r.json().get("text","")
-        except: continue
-    return None
-
-def brain(text,uid,is_owner,uname,chat_id):
-    global MEMORY,ABUSE
+def brain(text,uid,is_owner,uname,chat_id,reply_context=""):
+    global MEMORY
     uid_str=str(uid)
     if is_owner: uname=MALIK_NAME
-    if uid_str not in MEMORY: MEMORY[uid_str]={"hist":"","role":"","count":0,"quiz_topic":"","quiz_q":0,"quiz_score":0}
-    for k in ["hist","role","count","quiz_topic","quiz_q","quiz_score"]:
-        MEMORY[uid_str].setdefault(k, "" if "topic" in k or "role" in k else 0)
+    if uid_str not in MEMORY: MEMORY[uid_str]={"hist":"","count":0,"quiz_topic":"","quiz_q":0,"quiz_score":0}
     MEMORY[uid_str]["count"]+=1
     upstash("set","RAKAN_LAST_ACTIVE", time.time())
-    profile=analyze_user(uid,uname,text,is_owner)
     CHAT_LOG.append({"id":uid,"name":uname,"text":text,"time":str(datetime.datetime.now())[:16],"owner":is_owner})
     low=text.lower().strip()
 
-    # Secret block for public
     if not is_owner and any(s in low for s in ["bot_token","api key","owner id","queen","password"]):
         return "Ye Malik ka secret hai.", False
-
     if is_owner and low in ["/report","bug report","bug batao"]:
-        return get_bug_report(), False
-
+        return f"G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} O:{len(OPENAI_KEYS)} Last:{LAST_ERROR}", False
     rem=parse_reminder(text,chat_id) if is_owner else None
     if rem: return rem, False
+    if is_owner and low in ["/start","start"]: return "Welcome to your world The Shadow King 👑", False
+    if low in ["/start","start"]: return f"Welcome {uname}, bolo kya chahiye?", False
+    if low in ["hey","hi","hello","hey!","hi malik","hey malik"]:
+        return "Hey Malik, bolo kya haal hai? Kya kaam hai?", False
 
-    if is_owner and low in ["/start","start"]:
-        return "Welcome to your world The Shadow King 👑", False
-    if low in ["/start","start"]:
-        return f"Welcome {uname}, bolo kya chahiye?", False
+    if any(w in low for w in ["quiz lo","quiz karo","questions pucho","mcq","test lo"]):
+        topic=text.replace("quiz lo","").strip() or "general"
+        MEMORY[uid_str]["quiz_topic"]=topic; MEMORY[uid_str]["quiz_q"]=1; MEMORY[uid_str]["quiz_score"]=0
+        q_prompt=f"Quiz on {topic}. Create Q1 with 4 options A,B,C,D in Roman Hinglish. End with 'Jawab A/B/C/D me do'."
+        ans=ask_all(q_prompt) or f"Chalo {topic} pe Q1: 2+2? A)3 B)4 C)5 D)6"
+        MEMORY[uid_str]["hist"]+=f"\nU:{text}\nR:{ans}"; save_persist(); return ans, False
 
-    # ADVANCE MODES
-    # Quiz start
-    if any(w in low for w in ["quiz lo","quiz karo","questions pucho","quiz ke hisab","mcq pucho","test lo","meri is chiz me help karo"]):
-        topic=text.replace("quiz lo","").replace("quiz karo","").replace("questions pucho","").replace("meri is chiz me help karo","").strip() or "general"
-        MEMORY[uid_str]["quiz_topic"]=topic; MEMORY[uid_str]["quiz_q"]=1; MEMORY[uid_str]["quiz_score"]=0; save_persist()
-        q_prompt=f"User wants quiz on topic: {topic}. Create Question 1 with 4 options A,B,C,D, Roman Hinglish me, short. End me likho 'Jawab A/B/C/D me do'."
-        ans=ask_all(q_prompt) or f"Chalo {topic} pe Quiz start karte hain. Q1: 2+2 kitna? A)3 B)4 C)5 D)6"
-        MEMORY[uid_str]["hist"]+=f"\nU:{text}\nR:{ans}"; return ans, False
-
-    # Quiz answer handling
-    if MEMORY[uid_str].get("quiz_topic") and low in ["a","b","c","d","a)","b)","c)","d)"] or (len(low)<=2 and low[0] in "abcd"):
-        topic=MEMORY[uid_str]["quiz_topic"]; qnum=MEMORY[uid_str]["quiz_q"]; score=MEMORY[uid_str]["quiz_score"]
-        eval_prompt=f"Quiz Topic {topic}, Q{qnum} ka user answer {low} hai. Batao sahi hai ya galat, 1 line explain karo, score update karo, aur agla Question {qnum+1} pucho MCQ ke saath. Agar 5 question ho gaye to final score bata ke quiz khatam karo."
-        ans=ask_all(eval_prompt) or "Thik hai, agla sawal..."
+    if MEMORY[uid_str].get("quiz_topic") and low in ["a","b","c","d","a)","b)","c)","d)"]:
+        topic=MEMORY[uid_str]["quiz_topic"]; qnum=MEMORY[uid_str]["quiz_q"]
+        eval_prompt=f"Quiz {topic} Q{qnum} answer {low}. Sahi/galat 1 line, next Q{qnum+1} pucho. 5 Q ke baad score."
+        ans=ask_all(eval_prompt) or "Next..."
         MEMORY[uid_str]["quiz_q"]+=1
         if "sahi" in ans.lower(): MEMORY[uid_str]["quiz_score"]+=1
         if MEMORY[uid_str]["quiz_q"]>5:
-            ans+=f"\n\nQuiz khatam! Score {MEMORY[uid_str]['quiz_score']}/5"; MEMORY[uid_str]["quiz_topic"]=""
-        MEMORY[uid_str]["hist"]+=f"\nU:{text}\nR:{ans}"; save_persist(); return ans, False
+            ans+=f"\nQuiz khatam! Score {MEMORY[uid_str]['quiz_score']}/5"; MEMORY[uid_str]["quiz_topic"]=""
+        save_persist(); return ans, False
 
-    # Help/Steps mode
-    if any(w in low for w in ["kaise karna hai","kaise hoga","steps batao","kaise kare","is se related batao","explain karo detail"]):
-        help_prompt=f"User ko is cheez me help chahiye: {text}. Is se related steps, kaise karna hai, kaise hoga, short numbered list me Roman Hinglish me batao. Extra naam repeat mat karo."
-        ans=ask_all(help_prompt) or "Batao kis cheez ka step chahiye?"
+    if any(w in low for w in ["kaise karna hai","steps batao","kaise kare","explain karo"]):
+        help_prompt=f"User ko chahiye: {text}. ReplyContext: {reply_context}. Short numbered steps me Roman Hinglish me batao."
+        ans=ask_all(help_prompt) or "Bolo kis cheez ka step chahiye?"
         MEMORY[uid_str]["hist"]=(MEMORY[uid_str]["hist"]+f"\nU:{text}\nR:{ans}")[-2500:]; save_persist(); return ans, False
 
-    # Normal chat - short answer
-    role=MEMORY[uid_str].get("role","")
-    full=f"User: {profile['name']}, Mood:normal, Role:{role}\nHistory:{MEMORY[uid_str]['hist'][-1200:]}\nUser Message: {text}\nInstruction: Sirf is sawal ka jawab do, naam repeat mat karo, short me."
+    full=f"Reply Context: {reply_context}\nHistory:{MEMORY[uid_str]['hist'][-1200:]}\nUser: {uname} Message: {text}\nInstruction: Agar Reply Context hai to usko samajh ke jawab do. Short me, naam repeat mat karo."
     ans=ask_all(full) or "Bolo kya help chahiye?"
     ans=clean(ans)
     MEMORY[uid_str]["hist"]=(MEMORY[uid_str]["hist"]+f"\nU:{text}\nR:{ans}")[-2500:]; save_persist()
@@ -313,14 +267,8 @@ def brain(text,uid,is_owner,uname,chat_id):
 def home(): return f"Rakan AI Live {MALIK_NAME} G:{len(GROQ_KEYS)} O:{len(OPENAI_KEYS)} GM:{len(GEMINI_KEYS)} {ensure_webhook()}",200
 @app.route("/health", methods=["GET"])
 def health(): return jsonify({"groq":len(GROQ_KEYS),"openai":len(OPENAI_KEYS),"gemini":len(GEMINI_KEYS),"last_error":LAST_ERROR}),200
-@app.route("/report", methods=["GET"])
-def report_route():
-    if str(request.args.get("id","0"))!=str(OWNER_ID): return "Only Malik",403
-    return get_bug_report(),200
 @app.route("/cron", methods=["GET"])
-def cron_route():
-    n=check_reminders(); p=check_proactive()
-    return f"Reminders:{n} Proactive:{p}",200
+def cron_route(): n=check_reminders(); return f"Reminders:{n}",200
 @app.route("/fix", methods=["GET"])
 def fix():
     global GROQ_KEYS,GEMINI_KEYS,OPENAI_KEYS,BAD_KEYS
@@ -329,8 +277,7 @@ def fix():
     return f"FIXED G:{len(GROQ_KEYS)} O:{len(OPENAI_KEYS)} GM:{len(GEMINI_KEYS)}",200
 @app.route("/debug", methods=["GET"])
 def debug():
-    g,gm,o=get_keys()
-    return f"G:{len(g)} GM:{len(gm)} O:{len(o)} START:{[k[:6] for k in gm]}",200
+    g,gm,o=get_keys(); return f"G:{len(g)} GM:{len(gm)} O:{len(o)}",200
 @app.route("/webhook", methods=["POST","GET"])
 def webhook():
     if request.method=="GET": return f"Webhook {ensure_webhook()}",200
@@ -340,31 +287,69 @@ def webhook():
         msg=data.get("message",{}) or data.get("edited_message",{}) or {}
         chat_id=msg.get("chat",{}).get("id"); user_id=msg.get("from",{}).get("id",0)
         uname=msg.get("from",{}).get("first_name","user"); text=msg.get("text","") or msg.get("caption","") or ""
+        message_id=msg.get("message_id")
         if not chat_id: return "ok",200
         is_owner=(user_id==OWNER_ID)
         if is_owner: uname=MALIK_NAME
+
+        # === REPLY CONTEXT FIX ===
+        reply_context=""
+        reply_msg=msg.get("reply_to_message")
+        if reply_msg:
+            rt=reply_msg.get("text","") or reply_msg.get("caption","") or ""
+            rf=reply_msg.get("from",{}).get("first_name","")
+            if rt: reply_context=f"User replied to '{rf}' message: '{rt}'"
+            # Agar reply me photo thi to usko bhi samjho
+            if reply_msg.get("photo"):
+                fbytes,_=tg_get_file_bytes(reply_msg["photo"][-1]["file_id"])
+                if fbytes and text:
+                    vision_ans=ask_gemini_vision(fbytes, f"User asks about this replied photo: {text}. Reply Context: {reply_context}. Roman Hinglish me batao.")
+                    if vision_ans: tg_send(chat_id, vision_ans, message_id); return "ok",200
+
+        # Photo handle
         if msg.get("photo"):
             fbytes,_=tg_get_file_bytes(msg["photo"][-1]["file_id"])
             if fbytes:
                 q=text if text else "Is photo me kya hai, Roman Hinglish me batao."
+                if reply_context: q=f"{reply_context}\n{q}"
                 vision_ans=ask_gemini_vision(fbytes,q)
-                if vision_ans: tg_send(chat_id,vision_ans)
+                if vision_ans: tg_send(chat_id, vision_ans, message_id)
                 else:
-                    ans,_=brain(text,user_id,is_owner,uname,chat_id); tg_send(chat_id,ans)
+                    ans,_=brain(text,user_id,is_owner,uname,chat_id,reply_context); tg_send(chat_id,ans,message_id)
                 return "ok",200
-        if msg.get("voice") or msg.get("audio"):
-            fid=(msg.get("voice") or msg.get("audio") or {}).get("file_id")
-            audio_bytes,_=tg_get_file_bytes(fid)
-            heard=transcribe_media(audio_bytes) if audio_bytes else None
-            if heard:
-                ans,_=brain(heard,user_id,is_owner,uname,chat_id); tg_send(chat_id,ans)
-            return "ok",200
+
+        # Video / Voice / Audio handle
+        media_id=None; media_name="voice.ogg"
+        if msg.get("voice"): media_id=msg["voice"]["file_id"]; media_name="voice.ogg"
+        elif msg.get("audio"): media_id=msg["audio"]["file_id"]; media_name="audio.mp3"
+        elif msg.get("video"): media_id=msg["video"]["file_id"]; media_name="video.mp4"
+        elif msg.get("video_note"): media_id=msg["video_note"]["file_id"]; media_name="video.mp4"
+
+        if media_id:
+            audio_bytes,fp=tg_get_file_bytes(media_id)
+            if fp: media_name=fp.split("/")[-1]
+            if not audio_bytes: tg_send(chat_id,"File mili nahi, fir se bhejo.",message_id); return "ok",200
+            # Video ho to vision bhi try karo
+            if "video" in media_name or msg.get("video") or msg.get("video_note"):
+                # Pehle audio transcribe
+                heard=transcribe_media(audio_bytes, media_name)
+                prompt_text=text if text else (heard or "Is video me kya hai batao")
+                if reply_context: prompt_text=f"{reply_context}\n{prompt_text}"
+                # Agar video hai to vision se bhi dekhne ki koshish
+                vision_ans=ask_gemini_vision(audio_bytes, prompt_text) if len(audio_bytes)<4000000 else None
+                if vision_ans: tg_send(chat_id, vision_ans, message_id); return "ok",200
+                if heard:
+                    ans,_=brain(heard,user_id,is_owner,uname,chat_id,reply_context); tg_send(chat_id, ans, message_id); return "ok",200
+            else:
+                heard=transcribe_media(audio_bytes, media_name)
+                if heard:
+                    if is_owner: tg_send(chat_id, f"Aapne kaha: {heard}", message_id)
+                    ans,_=brain(heard,user_id,is_owner,uname,chat_id,reply_context); tg_send(chat_id, ans, message_id); return "ok",200
+            tg_send(chat_id,"Awaz saaf nahi aayi, fir se bhejo.",message_id); return "ok",200
+
         if not text: return "ok",200
-        ans,want_voice=brain(text,user_id,is_owner,uname,chat_id)
-        tg_send(chat_id,ans)
-        if want_voice:
-            audio=eleven_tts(ans)
-            if audio: tg_send_voice_bytes(chat_id,audio)
+        ans,_=brain(text,user_id,is_owner,uname,chat_id,reply_context)
+        tg_send(chat_id,ans,message_id)
         return "ok",200
     except Exception as e:
         print(traceback.format_exc()); return "ok",200
