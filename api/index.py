@@ -62,6 +62,13 @@ load_persist()
 
 def get_keys():
     g, gm = [], []
+    direct_gemini = os.environ.get("GEMINI_API_KEY","") + "," + os.environ.get("GOOGLE_API_KEY","") + "," + os.environ.get("GEMINI_KEYS","") + "," + os.environ.get("GEMINI_API_KEYS","")
+    direct_groq = os.environ.get("GROQ_API_KEY","") + "," + os.environ.get("GROQ_KEYS","") + "," + os.environ.get("GROQ_API_KEYS","")
+    for v in [direct_gemini, direct_groq]:
+        for p in str(v).replace("\n",",").split(","):
+            p=p.strip().strip('"').strip("'")
+            if p.startswith("gsk_") and p not in g: g.append(p)
+            elif p.startswith("AIza") and p not in gm: gm.append(p)
     for k,v in os.environ.items():
         if not v: continue
         parts = [p.strip().strip('"').strip("'") for p in str(v).replace("\n",",").split(",") if p.strip()]
@@ -141,17 +148,31 @@ def analyze_user(uid, uname, text, is_owner):
     elif any(w in low for w in ["gussa","angry","naraz"]): p["mood"]="angry"
     return p
 
-GROQ_MODELS = ["openai/gpt-oss-120b","openai/gpt-oss-20b","meta-llama/llama-4-scout-17b-16e-instruct","qwen/qwen3-32b","llama-3.3-70b-versatile","llama-3.1-8b-instant"]
+# GEMINI FRONT, GROQ BACKUP
 GEMINI_MODELS=[
 "gemini-3.8-flash",
-"gemini-3.7-flash", 
 "gemini-3.5-flash",
 "gemini-3.5-flash-lite",
 "gemini-3.1-flash-lite",
-"gemini-3.1-pro-preview",
-"gemini-2.5-flash",
-"gemini-2.5-pro"
+"gemini-2.5-flash"
 ]
+GROQ_MODELS = ["openai/gpt-oss-120b","openai/gpt-oss-20b","meta-llama/llama-4-scout-17b-16e-instruct","qwen/qwen3-32b","llama-3.3-70b-versatile","llama-3.1-8b-instant"]
+
+def ask_gemini(prompt):
+    global LAST_ERROR
+    for k in GEMINI_KEYS:
+        if is_bad(k): continue
+        for model_name in GEMINI_MODELS:
+            try:
+                genai.configure(api_key=k)
+                model=genai.GenerativeModel(model_name, system_instruction=FINAL_LORE)
+                res=model.generate_content(prompt)
+                if res.text: return clean(res.text)
+            except Exception as e: 
+                LAST_ERROR=f"Gemini {model_name} {e}"
+                if "429" in str(e) or "quota" in str(e).lower(): mark_bad(k); break
+                continue
+    return None
 
 def ask_groq(prompt):
     global LAST_ERROR
@@ -167,18 +188,6 @@ def ask_groq(prompt):
             except Exception as e: LAST_ERROR=f"Groq {e}"; continue
     return None
 
-def ask_gemini(prompt):
-    for k in GEMINI_KEYS:
-        if is_bad(k): continue
-        for model_name in GEMINI_MODELS:
-            try:
-                genai.configure(api_key=k)
-                model=genai.GenerativeModel(model_name, system_instruction=FINAL_LORE)
-                res=model.generate_content(prompt)
-                if res.text: return clean(res.text)
-            except Exception as e: print("GEMINI ERROR:", e); continue
-    return None
-
 def ask_gemini_vision(image_bytes, prompt_text):
     for k in GEMINI_KEYS:
         if is_bad(k): continue
@@ -191,9 +200,9 @@ def ask_gemini_vision(image_bytes, prompt_text):
     return None
 
 def ask_all(prompt):
-    return ask_groq(prompt) or ask_gemini(prompt)
+    # NEW ORDER: GEMINI FIRST, GROQ SECOND
+    return ask_gemini(prompt) or ask_groq(prompt)
 
-# ---------- MALIK BOLI PARSER ----------
 def malik_boli_parser(text):
     low = text.lower().strip()
     if low in ["q","q?","q ho","q hua","q nhi","q nahi"]:
@@ -233,7 +242,7 @@ def check_reminders():
 
 def get_bug_report():
     return f"""Ji Malik, Rakan ka Bug Report:
-- Groq Keys: {len(GROQ_KEYS)} | Gemini: {len(GEMINI_KEYS)}
+- FRONT Gemini: {len(GEMINI_KEYS)} | BACKUP Groq: {len(GROQ_KEYS)}
 - ElevenLabs Voice: {'ON hai' if ELEVEN_API_KEY else 'OFF hai (key nahi hai)'}
 - Upstash Memory: {'Juda hai' if UPSTASH_URL else 'Nahi juda'}
 - Replicate Photo: {'Hai' if REPLICATE_TOKEN else 'Nahi hai'}
@@ -402,7 +411,7 @@ def handle_media_edit(file_bytes, prompt, chat_id):
     b64 = f"data:image/jpeg;base64,{base64.b64encode(file_bytes).decode()}"
     out=None
     if "hd" in prompt.lower(): out=replicate_run("42a996d39a96aedc57b2e0aa8105dea39d42db6cc2ad6d9542d37dbffa872a6e", {"image": b64, "scale":2})
-    else: out=replicate_run("a9758cbfbd5f3c2094457d996e30b99969333e9a42f0d6d9ec1bc1b1c5a1a1c3b", {"image": b64})
+    else: out=replicate_run("a9758cbfbd5f3c2094457d996e30b99969333e9a42f0d6d9ec1bc1b1c3b", {"image": b64})
     if out:
         url = out if isinstance(out,str) else (out[0] if isinstance(out,list) and out else None)
         if url: tg_send_photo(chat_id, url, f"Ho gaya {prompt}"); return True
@@ -410,10 +419,10 @@ def handle_media_edit(file_bytes, prompt, chat_id):
     return False
 
 @app.route("/", methods=["GET"])
-def home(): return f"Rakan AI Live {MALIK_NAME} G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} {ensure_webhook()}",200
+def home(): return f"Rakan AI Live {MALIK_NAME} G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} FRONT:GEMINI {ensure_webhook()}",200
 
 @app.route("/health", methods=["GET"])
-def health(): return jsonify({"groq":len(GROQ_KEYS),"gemini":len(GEMINI_KEYS),"users":len(PROFILES),"rep":bool(REPLICATE_TOKEN),"eleven":bool(ELEVEN_API_KEY),"upstash":bool(UPSTASH_URL),"owner":OWNER_ID,"voice_mode":OWNER_PREF.get("voice_mode"),"reminders":len(REMINDERS),"last_error":LAST_ERROR}),200
+def health(): return jsonify({"front":"gemini","groq":len(GROQ_KEYS),"gemini":len(GEMINI_KEYS),"users":len(PROFILES),"rep":bool(REPLICATE_TOKEN),"eleven":bool(ELEVEN_API_KEY),"upstash":bool(UPSTASH_URL),"owner":OWNER_ID,"voice_mode":OWNER_PREF.get("voice_mode"),"reminders":len(REMINDERS),"last_error":LAST_ERROR}),200
 
 @app.route("/report", methods=["GET"])
 def report_route():
@@ -447,11 +456,11 @@ def fix():
     if str(request.args.get("id",""))!= str(OWNER_ID): return "Access Denied",403
     GROQ_KEYS, GEMINI_KEYS = get_keys()
     BAD_KEYS.clear(); load_persist(); OWNER_PREF["voice_mode"]=False; save_persist(); check_reminders()
-    return f"FIXED Rakan AI {ensure_webhook()} G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}",200
+    return f"FIXED Rakan AI FRONT:GEMINI {ensure_webhook()} G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}",200
 
 @app.route("/webhook", methods=["POST","GET"])
 def webhook():
-    if request.method=="GET": return f"Rakan AI Webhook Active {ensure_webhook()}",200
+    if request.method=="GET": return f"Rakan AI Webhook Active FRONT:GEMINI {ensure_webhook()}",200
     try:
         check_reminders()
         data=request.get_json(silent=True) or {}
