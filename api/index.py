@@ -15,7 +15,6 @@ REPLICATE_TOKEN = os.environ.get("REPLICATE_API_TOKEN","") or os.environ.get("RE
 UPSTASH_URL = os.environ.get("UPSTASH_REDIS_REST_URL","")
 UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN","")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 MALIK_NAME = "MD Saif Ahmad"
 MALIK_TITLE = "The Shadow King"
 QUEEN_NAME = "Theodore"
@@ -62,17 +61,16 @@ def save_persist():
 load_persist()
 
 def get_keys():
-    g, gm, o = [], [], []
+    g, gm = [], []
     for k,v in os.environ.items():
         if not v: continue
         parts = [p.strip().strip('"').strip("'") for p in str(v).replace("\n",",").split(",") if p.strip()]
         for p in parts:
             if p.startswith("gsk_") and p not in g: g.append(p)
             elif p.startswith("AIza") and p not in gm: gm.append(p)
-            elif p.startswith("sk-") and p not in o: o.append(p)
-    return list(dict.fromkeys(g)), list(dict.fromkeys(gm)), list(dict.fromkeys(o))
+    return list(dict.fromkeys(g)), list(dict.fromkeys(gm))
 
-GROQ_KEYS, GEMINI_KEYS, OPENAI_KEYS = get_keys()
+GROQ_KEYS, GEMINI_KEYS = get_keys()
 def is_bad(k): return k in BAD_KEYS and time.time()-BAD_KEYS[k] < 900
 def mark_bad(k): BAD_KEYS[k]=time.time()
 
@@ -144,7 +142,6 @@ def analyze_user(uid, uname, text, is_owner):
     return p
 
 GROQ_MODELS = ["openai/gpt-oss-120b","openai/gpt-oss-20b","meta-llama/llama-4-scout-17b-16e-instruct","qwen/qwen3-32b","llama-3.3-70b-versatile","llama-3.1-8b-instant"]
-OPENAI_MODELS = ["gpt-4o-mini","gpt-4o","gpt-3.5-turbo"]
 GEMINI_MODELS=[
 "gemini-3.8-flash",
 "gemini-3.7-flash", 
@@ -170,20 +167,6 @@ def ask_groq(prompt):
             except Exception as e: LAST_ERROR=f"Groq {e}"; continue
     return None
 
-def ask_openai(prompt):
-    global LAST_ERROR
-    for k in OPENAI_KEYS:
-        if is_bad(k): continue
-        for model_name in OPENAI_MODELS:
-            try:
-                r=requests.post(OPENAI_URL, headers={"Authorization":f"Bearer {k}","Content-Type":"application/json"}, json={"model":model_name,"messages":[{"role":"system","content":FINAL_LORE},{"role":"user","content":prompt}],"temperature":0.7,"max_tokens":1000}, timeout=25)
-                if r.status_code==200:
-                    ans=r.json()["choices"][0]["message"]["content"]
-                    if ans: return clean(ans)
-                if r.status_code in [401,403,429]: mark_bad(k); LAST_ERROR=f"OpenAI key bad {r.status_code}"; break
-            except Exception as e: LAST_ERROR=f"OpenAI {e}"; continue
-    return None
-
 def ask_gemini(prompt):
     for k in GEMINI_KEYS:
         if is_bad(k): continue
@@ -201,25 +184,23 @@ def ask_gemini_vision(image_bytes, prompt_text):
         if is_bad(k): continue
         try:
             genai.configure(api_key=k)
-            model=genai.GenerativeModel("gemini-1.5-flash")
+            model=genai.GenerativeModel("gemini-3.5-flash")
             res=model.generate_content([prompt_text, {"mime_type":"image/jpeg","data":image_bytes}])
             if res.text: return clean(res.text)
         except Exception as e: print("VISION ERROR:", e); continue
     return None
 
 def ask_all(prompt):
-    return ask_groq(prompt) or ask_openai(prompt) or ask_gemini(prompt)
+    return ask_groq(prompt) or ask_gemini(prompt)
 
 # ---------- MALIK BOLI PARSER ----------
 def malik_boli_parser(text):
     low = text.lower().strip()
-    # Q matlab Kyun, Question nahi (sirf jab akela Q ho ya Q se sawal bane)
     if low in ["q","q?","q ho","q hua","q nhi","q nahi"]:
         return "kyun"
     if low.startswith("q "):
         text = "kyun " + text[2:]
         low = text.lower()
-    # Malik ke msg me massage = message
     text = re.sub(r'\bmassage\b', 'message', text, flags=re.IGNORECASE)
     text = re.sub(r'\bmsg\b', 'message', text, flags=re.IGNORECASE)
     return text
@@ -230,7 +211,6 @@ def parse_reminder(text, chat_id):
     if m and ("message" in low or "msg" in low or "yaad" in low or "bolo" in low or "bhejo" in low):
         num = int(m.group(1)); unit = m.group(2)
         sec = num*60 if "min" in unit else num*3600 if ("ghante" in unit or "hour" in unit) else num
-        # Kya bolna hai wo nikalo
         msg_to_send = "Rakan sewa me hazir hai"
         if "ye message" in low or "ye bolo" in low:
             msg_to_send = text
@@ -253,7 +233,7 @@ def check_reminders():
 
 def get_bug_report():
     return f"""Ji Malik, Rakan ka Bug Report:
-- Groq Keys: {len(GROQ_KEYS)} | OpenAI: {len(OPENAI_KEYS)} | Gemini: {len(GEMINI_KEYS)}
+- Groq Keys: {len(GROQ_KEYS)} | Gemini: {len(GEMINI_KEYS)}
 - ElevenLabs Voice: {'ON hai' if ELEVEN_API_KEY else 'OFF hai (key nahi hai)'}
 - Upstash Memory: {'Juda hai' if UPSTASH_URL else 'Nahi juda'}
 - Replicate Photo: {'Hai' if REPLICATE_TOKEN else 'Nahi hai'}
@@ -268,10 +248,9 @@ def get_self_suggestion():
     if not UPSTASH_URL: kami.append("Upstash nahi hai")
     if not ELEVEN_API_KEY: kami.append("ElevenLabs key nahi hai")
     if not REPLICATE_TOKEN: kami.append("Replicate nahi hai")
-    prompt=f"Tu Rakan hai, Malik ka Knight. Roman Hinglish me bata kami kya hai aur strong kaise hoga. Kami={kami}, Groq={len(GROQ_KEYS)}, OpenAI={len(OPENAI_KEYS)}, Gemini={len(GEMINI_KEYS)}. 5 point me bata."
+    prompt=f"Tu Rakan hai, Malik ka Knight. Roman Hinglish me bata kami kya hai aur strong kaise hoga. Kami={kami}, Groq={len(GROQ_KEYS)}, Gemini={len(GEMINI_KEYS)}. 5 point me bata."
     return ask_all(prompt) or get_bug_report()
 
-# ---------- VOICE ----------
 def eleven_tts(text):
     if not ELEVEN_API_KEY: return None
     try:
@@ -293,11 +272,6 @@ def transcribe_media(audio_bytes, filename="voice.ogg"):
             r=requests.post("https://api.groq.com/openai/v1/audio/transcriptions", headers={"Authorization":f"Bearer {k}"}, files={"file":(filename, audio_bytes)}, data={"model":"whisper-large-v3"}, timeout=30)
             if r.status_code==200: return r.json().get("text","")
         except: continue
-    for k in OPENAI_KEYS:
-        try:
-            r=requests.post("https://api.openai.com/v1/audio/transcriptions", headers={"Authorization":f"Bearer {k}"}, files={"file":(filename, audio_bytes)}, data={"model":"whisper-1"}, timeout=30)
-            if r.status_code==200: return r.json().get("text","")
-        except: continue
     return None
 
 def brain(text, uid, is_owner, uname, chat_id):
@@ -316,22 +290,19 @@ def brain(text, uid, is_owner, uname, chat_id):
     if len(CHAT_LOG)>400: CHAT_LOG.pop(0)
     low=text.lower().strip()
 
-    # PASSWORD SECURITY - Public ke liye lock, Malik ko alert
     secret_words = ["bot_token","bot token","api key","api_key","groq key","openai key","gemini key","elevenlabs key","password","vercel password","owner id","queen kaun","queen name","theodore kaun","janam kab","history batao","lore batao","token do","key do","hack"]
     if any(s in low for s in secret_words) and not is_owner:
         if OWNER_ID and chat_id:
             tg_send(OWNER_ID, f"Malik Alert: {uname} (ID:{uid}) ne secret nikalne ki koshish ki. Msg: {text}")
         return "Ye Malik ka secret hai, mai nahi bata sakta.", False
     if any(s in low for s in secret_words) and is_owner and ("queen" in low or "janam" in low or "history" in low):
-        pass # Malik khud puche to niche wala rule batayega
+        pass
     elif any(s in low for s in ["token do","key do","password do","api key batao"]) and is_owner:
         return "Ji Malik, mai key/token chat me nahi bhejta, ye security rule hai. Aap Vercel dashboard me dekh lo.", False
 
-    # BUG REPORT - Sirf Malik
     if is_owner and (low in ["/report","bug batao","bug report","kya fault hai","fault batao","kya gadbad hai"] or "bug bata" in low):
         return get_bug_report(), False
 
-    # REMINDER - Sirf Malik
     if is_owner:
         rem = parse_reminder(text, chat_id)
         if rem: return rem, False
@@ -346,7 +317,6 @@ def brain(text, uid, is_owner, uname, chat_id):
             if ABUSE[uid_str]==3: return f"{uname}, 3 warning ho gayi hain. Ab bhi gali di to mai savage mode on kar dunga.", False
             return f"Abe {uname}, tu {ABUSE[uid_str]} baar gali de chuka hai, aukat me reh ke baat kar.", False
 
-    # /start - Sirf Malik ke liye sirf ek line
     if is_owner and low in ["/start","start"]:
         return "Welcome to your world The Shadow King 👑", False
     if low in ["/start","start"] and not is_owner:
@@ -440,10 +410,10 @@ def handle_media_edit(file_bytes, prompt, chat_id):
     return False
 
 @app.route("/", methods=["GET"])
-def home(): return f"Rakan AI Live {MALIK_NAME} G:{len(GROQ_KEYS)} O:{len(OPENAI_KEYS)} GM:{len(GEMINI_KEYS)} {ensure_webhook()}",200
+def home(): return f"Rakan AI Live {MALIK_NAME} G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} {ensure_webhook()}",200
 
 @app.route("/health", methods=["GET"])
-def health(): return jsonify({"groq":len(GROQ_KEYS),"openai":len(OPENAI_KEYS),"gemini":len(GEMINI_KEYS),"users":len(PROFILES),"rep":bool(REPLICATE_TOKEN),"eleven":bool(ELEVEN_API_KEY),"upstash":bool(UPSTASH_URL),"owner":OWNER_ID,"voice_mode":OWNER_PREF.get("voice_mode"),"reminders":len(REMINDERS),"last_error":LAST_ERROR}),200
+def health(): return jsonify({"groq":len(GROQ_KEYS),"gemini":len(GEMINI_KEYS),"users":len(PROFILES),"rep":bool(REPLICATE_TOKEN),"eleven":bool(ELEVEN_API_KEY),"upstash":bool(UPSTASH_URL),"owner":OWNER_ID,"voice_mode":OWNER_PREF.get("voice_mode"),"reminders":len(REMINDERS),"last_error":LAST_ERROR}),200
 
 @app.route("/report", methods=["GET"])
 def report_route():
@@ -452,7 +422,6 @@ def report_route():
 
 @app.route("/cron", methods=["GET"])
 def cron_route():
-    # Vercel Cron har minute isko bulayega to reminder time pe jayega
     n = check_reminders()
     return f"Reminders sent: {n}",200
 
@@ -474,11 +443,11 @@ def api_chat():
 
 @app.route("/fix", methods=["GET"])
 def fix():
-    global GROQ_KEYS, GEMINI_KEYS, OPENAI_KEYS, BAD_KEYS
+    global GROQ_KEYS, GEMINI_KEYS, BAD_KEYS
     if str(request.args.get("id",""))!= str(OWNER_ID): return "Access Denied",403
-    GROQ_KEYS, GEMINI_KEYS, OPENAI_KEYS = get_keys()
+    GROQ_KEYS, GEMINI_KEYS = get_keys()
     BAD_KEYS.clear(); load_persist(); OWNER_PREF["voice_mode"]=False; save_persist(); check_reminders()
-    return f"FIXED Rakan AI {ensure_webhook()} G:{len(GROQ_KEYS)} O:{len(OPENAI_KEYS)} GM:{len(GEMINI_KEYS)}",200
+    return f"FIXED Rakan AI {ensure_webhook()} G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}",200
 
 @app.route("/webhook", methods=["POST","GET"])
 def webhook():
