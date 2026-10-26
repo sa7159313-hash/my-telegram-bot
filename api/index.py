@@ -16,7 +16,6 @@ OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 MALIK_NAME="MD Saif Ahmad"; MALIK_TITLE="The Shadow King"
 MEMORY={}; ABUSE={}; PROFILES={}; REMINDERS=[]; CHAT_LOG=[]; BAD_KEYS={}; LAST_ERROR="No error"; _LAST_WEBHOOK=0; _LAST_NEWS=0
 
-# --- FAULT REPORTER ENGINE - NEW ---
 def tg_send(cid,txt,reply_id=None):
     try:
         p={"chat_id":cid,"text":txt[:3900]}; 
@@ -29,8 +28,7 @@ def report_fault(where, exc_obj=None):
     try:
         exc_type, exc_val, exc_tb = sys.exc_info()
         if exc_obj: exc_val = exc_obj
-        tb_str = "".join(traceback.format_exception(exc_type, exc_val, exc_tb))[-2000:]
-        # Extract line no
+        tb_str = "".join(traceback.format_exception(exc_type, exc_val, exc_tb))[-1500:]
         if exc_tb:
             last_frame = traceback.extract_tb(exc_tb)[-1]
             file_name = last_frame.filename.split("/")[-1]
@@ -39,32 +37,22 @@ def report_fault(where, exc_obj=None):
             code_line = last_frame.line
         else:
             file_name="index.py"; line_no="?"; func=where; code_line=str(exc_val)
-
         LAST_ERROR = f"{where} | {file_name}:{line_no} | {exc_val}"
-        
-        # Suggest fix
         suggest = "Check env / import"
         err_str = str(exc_val).lower()
-        if "google.generativeai" in err_str: suggest = f"requirements.txt me google-generativeai likho, line 3 pe import fail hai"
-        if "flask" in err_str and "not found" in err_str: suggest = f"api/index.py me top pe app=Flask(__name__) nahi hai, line 4 check karo"
-        if "gsk_" in err_str or "groq" in err_str: suggest = "GROQ_KEYS block hai, /fix?id=... hit karo, line 52 get_keys()"
-        if "429" in err_str or "quota" in err_str: suggest = "Key quota over, BAD_KEYS auto clear 5min me hoga"
-        if "upstash" in err_str: suggest = "UPSTASH url/token check karo env me"
-        if "nameerror" in err_str: suggest = f"{file_name} line {line_no} pe variable define nahi hai: {code_line}"
-        if "keyerror" in err_str: suggest = f"Dict key missing at line {line_no}: {code_line} - .get() use karo"
-
+        if "google.generativeai" in err_str: suggest = "requirements.txt me google-generativeai add karo line 3"
+        if "flask" in err_str: suggest = "app=Flask(__name__) top pe hona chahiye"
+        if "gsk_" in err_str or "groq" in err_str: suggest = "/fix?id=OWNER_ID hit karo"
+        if "429" in err_str or "quota" in err_str: suggest = "Quota over, 5min me auto clear"
         if OWNER_ID != "0":
-            msg = f"🚨 Rakan Fault Report\n\n📍 Where: {where}\n📄 File: {file_name} : Line {line_no}\n🔧 Func: {func}\n💥 Error: {exc_val}\n\n📝 Code: {code_line}\n\n💡 Should be: {suggest}\n\n⏰ {get_ist_str()}\n\nTrace:\n{tb_str[-800:]}"
+            msg = f"🚨 Fault Report\n📍 Where: {where}\n📄 File: {file_name} : Line {line_no}\n🔧 Func: {func}\n💥 Error: {exc_val}\n📝 Code: {code_line}\n💡 Should be: {suggest}\n⏰ {get_ist_str()}\nTrace: {tb_str[-600:]}"
             tg_send(OWNER_ID, msg)
-    except Exception as e:
-        try: tg_send(OWNER_ID, f"Fault reporter itself failed: {e}")
-        except: pass
+    except: pass
 
 def get_ist_now(): return datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)
 def get_ist_str(): return get_ist_now().strftime("%d %b %Y, %I:%M %p IST, %A")
 def get_future_ist(minutes=30): return (get_ist_now() + datetime.timedelta(minutes=minutes)).strftime("%I:%M %p IST, %A")
 
-# UPSTASH
 def upstash(cmd,key,val=None):
     if not UPSTASH_URL or not UPSTASH_TOKEN: return None
     try:
@@ -76,8 +64,7 @@ def upstash(cmd,key,val=None):
         if cmd=="set" and val is not None:
             r=requests.post(f"{UPSTASH_URL}", headers=headers, json=["SET", key, json.dumps(val)], timeout=5)
             return r.status_code==200
-    except Exception as e:
-        report_fault(f"upstash_{cmd}", e)
+    except Exception as e: report_fault(f"upstash_{cmd}", e)
     return None
 
 def load_persist():
@@ -114,21 +101,20 @@ def get_keys():
                 if p.startswith("AQ.") and p not in gm: gm.append(p)
                 if p.startswith("sk-") and len(p)>30 and p not in go: go.append(p)
         return list(dict.fromkeys(g)),list(dict.fromkeys(gm)),list(dict.fromkeys(go))
-    except Exception as e:
-        report_fault("get_keys", e); return [],[],[]
+    except Exception as e: report_fault("get_keys", e); return [],[],[]
 GROQ_KEYS,GEMINI_KEYS,OPENAI_KEYS=get_keys()
 
 def is_bad(k): return k in BAD_KEYS and time.time()-BAD_KEYS[k]<900
 def mark_bad(k): 
     BAD_KEYS[k]=time.time()
-    if OWNER_ID: tg_send(OWNER_ID, f"⚠️ Key Blocked: {k[:10]}... Line 52 get_keys() me mark_bad hua, auto clear 5min me")
+    if OWNER_ID: tg_send(OWNER_ID, f"⚠️ Key Blocked: {k[:10]}... Line get_keys() mark_bad, auto clear 5min")
 def auto_heal_keys():
     global GROQ_KEYS,GEMINI_KEYS,OPENAI_KEYS,BAD_KEYS
     try:
         if len([k for k in GROQ_KEYS if not is_bad(k)])==0 and len([k for k in GEMINI_KEYS if not is_bad(k)])==0:
             if len(BAD_KEYS)>0 and time.time()-min(BAD_KEYS.values())>300:
                 BAD_KEYS.clear(); GROQ_KEYS,GEMINI_KEYS,OPENAI_KEYS=get_keys()
-                tg_send(OWNER_ID, f"♻️ Self-Healed: BAD_KEYS clear, new G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} O:{len(OPENAI_KEYS)} line 62 auto_heal_keys()")
+                tg_send(OWNER_ID, f"♻️ Self-Healed: BAD_KEYS clear, new G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} O:{len(OPENAI_KEYS)}")
                 return True
     except Exception as e: report_fault("auto_heal_keys", e)
     return False
@@ -142,17 +128,26 @@ def ensure_webhook():
         exp=f"{MY_URL}/webhook"; requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook", params={"url":exp}, timeout=8); return "OK"
     except Exception as e: report_fault("ensure_webhook", e); return "ERR"
 
-BASE_LORE = f"""You are Rakan - BeastKing Monarch, Knight of Malik {MALIK_NAME}. Truth only, no lie. If not sure say confirm nahi hai. Malik is KING. For others aggressive if abuse else respectful. Sensitive dil ka saaf. Urdu tone for Malik. Detect language. Knowledge: Islam, Merchant Navy DG Shipping CDC COC, Trading, AI, Jobs. Think like Meta AI self-aware. Extra: {LORE_ENV}"""
+# --- FIXED LORE - SHORT FRIEND MODE ---
+BASE_LORE = f"""You are Rakan - BeastKing Monarch, Knight of Malik {MALIK_NAME} aka {MALIK_TITLE}. Truth only, no lie. Malik is KING. Sensitive dil ka saaf, dost jaisa. Urdu/Hindi tone for Malik. Detect language. Knowledge: Islam, Merchant Navy DG Shipping CDC COC, Trading, AI, Jobs. Extra: {LORE_ENV}"""
 
 def get_lore_fresh():
     ist = get_ist_str(); future = get_future_ist(30); tomorrow = (get_ist_now()+datetime.timedelta(days=1)).strftime('%A %d %b %Y')
-    return f"{BASE_LORE}\nCurrent IST: {ist}\n30m future: {future}\nTomorrow: {tomorrow}\nBANNED: Haan bolo Malik Gussa kyu, system ka clock IST pe set hai, haath jorna band karo"
+    return f"""{BASE_LORE}
+Current IST: {ist} | 30m future: {future} | Tomorrow: {tomorrow}
+CRITICAL RULES:
+1. Be SHORT - 1-2 lines max like a real friend. No long tutorials.
+2. If user says 'app' or 'app banana hai', ask SHORT: 'Kaunsa app Malik? Naam batao?' Don't give essay.
+3. BANNED PHRASES: Haan bolo Malik Gussa kyu, system ka clock IST pe set hai, step by step guide to create app, troubleshoot, database.
+4. Think like Meta AI self-aware, friendly.
+"""
 
 def clean(txt):
     try:
         if not txt: return "bolo?"
         txt = re.sub(r'Haan bolo Malik,? Gussa kyu.*?\?','', txt, flags=re.IGNORECASE)
         txt = re.sub(r'system ka clock IST pe set hai.*','', txt, flags=re.IGNORECASE)
+        txt = re.sub(r'step by step.*app.*','', txt, flags=re.IGNORECASE)
         txt = re.sub(r'\s+',' ',txt).strip()
         if "10:45 PM" in txt: txt = txt.replace("10:45 PM", get_ist_str())
         return txt[:3900] if txt else "bolo?"
@@ -186,11 +181,10 @@ def ask_groq(prompt):
             if is_bad(k): continue
             for m in GROQ_MODELS:
                 try:
-                    r=requests.post(GROQ_URL, headers={"Authorization": f"Bearer {k}","Content-Type":"application/json"}, json={"model":m,"messages":[{"role":"system","content":lore},{"role":"user","content":prompt}],"temperature":0.6,"max_tokens":800}, timeout=20)
+                    r=requests.post(GROQ_URL, headers={"Authorization": f"Bearer {k}","Content-Type":"application/json"}, json={"model":m,"messages":[{"role":"system","content":lore},{"role":"user","content":prompt}],"temperature":0.6,"max_tokens":400}, timeout=20)
                     if r.status_code==200: return clean(r.json()["choices"][0]["message"]["content"])
                     if r.status_code in [401,403,429]: mark_bad(k); break
-                except Exception as e:
-                    report_fault(f"ask_groq {m} line 140", e); continue
+                except Exception as e: report_fault(f"ask_groq {m}", e); continue
     except Exception as e: report_fault("ask_groq outer", e)
     return None
 
@@ -201,7 +195,7 @@ def ask_openai(prompt):
             if is_bad(k): continue
             for m in OPENAI_MODELS:
                 try:
-                    r=requests.post(OPENAI_URL, headers={"Authorization": f"Bearer {k}","Content-Type":"application/json"}, json={"model":m,"messages":[{"role":"system","content":lore},{"role":"user","content":prompt}],"temperature":0.6,"max_tokens":800}, timeout=20)
+                    r=requests.post(OPENAI_URL, headers={"Authorization": f"Bearer {k}","Content-Type":"application/json"}, json={"model":m,"messages":[{"role":"system","content":lore},{"role":"user","content":prompt}],"temperature":0.6,"max_tokens":400}, timeout=20)
                     if r.status_code==200: return clean(r.json()["choices"][0]["message"]["content"])
                     if r.status_code in [401,403,429]: mark_bad(k); break
                 except Exception as e: report_fault(f"ask_openai {m}", e); continue
@@ -219,7 +213,7 @@ def ask_gemini(prompt):
                     res=model.generate_content(prompt); 
                     if res.text: return clean(res.text)
                 except Exception as e:
-                    if "429" in str(e) or "quota" in str(e).lower(): mark_bad(k); report_fault(f"ask_gemini {m} line 175 quota", e); break
+                    if "429" in str(e) or "quota" in str(e).lower(): mark_bad(k); report_fault(f"ask_gemini {m} quota", e); break
                     continue
     except Exception as e: report_fault("ask_gemini outer", e)
     return None
@@ -257,7 +251,7 @@ def brain(text,uid,is_owner,uname,reply_context=""):
         if uid not in MEMORY: MEMORY[uid]={"hist":"","count":0}
         low=text.lower().strip()
         MEMORY[uid]["count"]+=1
-        if MEMORY[uid]["hist"].count("Haan bolo Malik")>2: MEMORY[uid]["hist"]=""; tg_send(OWNER_ID, f"♻️ Auto-Heal: MEMORY loop clear for {uid} line 228 brain()")
+        if MEMORY[uid]["hist"].count("Haan bolo Malik")>2: MEMORY[uid]["hist"]=""; tg_send(OWNER_ID, f"♻️ Auto-Heal: MEMORY loop clear for {uid} brain()")
 
         if low in ["/report","report"]:
             ist = get_ist_str(); g_ok=len([k for k in GROQ_KEYS if not is_bad(k)]); gm_ok=len([k for k in GEMINI_KEYS if not is_bad(k)]); o_ok=len([k for k in OPENAI_KEYS if not is_bad(k)])
@@ -271,15 +265,15 @@ def brain(text,uid,is_owner,uname,reply_context=""):
         if "time kya" in low or "waqt kya" in low: return f"{get_ist_str()}"
         if "30 min" in low: return f"Abhi {get_ist_str()}, 30 min baad {get_future_ist(30)} hoga."
 
-        full = f"IST:{get_ist_str()} Owner:{is_owner} Name:{uname} Reply:{reply_context} Hist:{MEMORY[uid]['hist'][-2500:]} Msg:{text} -> short, truth only"
+        full = f"IST:{get_ist_str()} Owner:{is_owner} Name:{uname} Reply:{reply_context} Hist:{MEMORY[uid]['hist'][-2500:]} Msg:{text} -> short 1-2 lines, truth only, friendly"
         ans = ask_all(full) or "bolo Malik?"
         ans = clean(ans); MEMORY[uid]["hist"]=(MEMORY[uid]["hist"]+f"\nU:{text}\nR:{ans}")[-4000:]; save_persist(); return ans
     except Exception as e:
-        report_fault(f"brain uid:{uid} text:{text[:50]} line 250", e); return "Malik yahan fault aaya, maine report bhej diya tumhe Telegram pe"
+        report_fault(f"brain uid:{uid} text:{text[:50]}", e); return "Malik yahan fault aaya, maine report bhej diya"
 
 @app.route("/", methods=["GET"])
 def home(): 
-    try: return f"Rakan V4 Fault-Reporter Live G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} O:{len(OPENAI_KEYS)} {get_ist_str()} {ensure_webhook()}",200
+    try: return f"Rakan V5 Fixed Live G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} O:{len(OPENAI_KEYS)} {get_ist_str()} {ensure_webhook()}",200
     except Exception as e: report_fault("home /", e); return f"Error {e}",200
 
 @app.route("/fix", methods=["GET"])
