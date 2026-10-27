@@ -1,4 +1,4 @@
-# api/cron.py - V35.8 FIXED - Weather + Auto Storage Clean
+# api/cron.py - V35.9 FINAL - Weather + Auto Storage Clean FIXED
 import os, json, requests, datetime
 from flask import Flask
 
@@ -23,7 +23,6 @@ def upstash_get(key):
     return None
 
 def get_profiles():
-    # V35.8 - Naya key pehle, purana fallback
     for k in ["RAKAN_PROFILES_V357","RAKAN_PROFILES_V355","RAKAN_PROFILES_V354","RAKAN_PROFILES"]:
         data = upstash_get(k)
         if data: return data
@@ -48,25 +47,35 @@ def tg_send(cid, txt):
     except: pass
 
 def auto_clean_storage():
-    # Agar VERCEL_TOKEN hai to purani deployments auto delete karega
-    if not VERCEL_TOKEN or not PROJECT_ID:
+    if not VERCEL_TOKEN:
         return "skip - no token"
     try:
-        url = f"https://api.vercel.com/v6/deployments?projectId={PROJECT_ID}&limit=20"
         h = {"Authorization": f"Bearer {VERCEL_TOKEN}"}
+        # 1. Project ka asli prj_ ID nikalo
+        real_project_id = PROJECT_ID
+        if not PROJECT_ID.startswith("prj_"):
+            pr = requests.get(f"https://api.vercel.com/v9/projects/{PROJECT_ID}", headers=h, timeout=10).json()
+            real_project_id = pr.get("id", PROJECT_ID)
+        
+        # 2. Deployments lao
+        url = f"https://api.vercel.com/v6/deployments?projectId={real_project_id}&limit=30"
         r = requests.get(url, headers=h, timeout=10).json()
         deps = r.get("deployments",[])
+        
+        if len(deps) <= 3:
+            return f"skip - only {len(deps)} deps"
+            
         deleted = 0
-        for d in deps[2:]: # latest 2 chhod ke
-            created = d.get("created",0)/1000
-            age_days = (datetime.datetime.now().timestamp() - created)/86400
-            if age_days > 1: # 1 din se purani
-                dep_id = d.get("uid")
-                requests.delete(f"https://api.vercel.com/v13/deployments/{dep_id}", headers=h, timeout=10)
+        # Latest 3 chhod ke baaki sab delete
+        for d in deps[3:]:
+            dep_id = d.get("uid")
+            del_r = requests.delete(f"https://api.vercel.com/v13/deployments/{dep_id}", headers=h, timeout=10)
+            if del_r.status_code in [200,202,204]:
                 deleted+=1
-        return f"cleaned {deleted}"
+                
+        return f"cleaned {deleted} | left {len(deps)-deleted}"
     except Exception as e:
-        return f"clean err {e}"
+        return f"clean err {str(e)[:80]}"
 
 def main_logic():
     try:
@@ -74,14 +83,13 @@ def main_logic():
             return "no env - BOT_TOKEN/OWNER_ID missing"
         
         profiles = get_profiles()
-        # city ya weather_city dono check karega
         owner_data = profiles.get(OWNER_ID, {}) or profiles.get(str(OWNER_ID), {})
         owner_city = owner_data.get("city") or owner_data.get("weather_city") or owner_data.get("city_name") or "Varanasi"
         
         w = get_weather_world(owner_city)
         ist = (datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)).strftime("%d %b %I:%M %p IST")
         clean_info = auto_clean_storage()
-        msg = f"📰 Auto Weather V35.8 {ist}\n📍 {w}\n✅ Your locked city: {owner_city}\n🧹 Storage Clean: {clean_info}\nBot Live"
+        msg = f"📰 Auto Weather V35.9 {ist}\n📍 {w}\n✅ Your locked city: {owner_city}\n🧹 Storage Clean: {clean_info}\nBot Live"
         tg_send(OWNER_ID, msg)
         return f"sent {owner_city} - {w} - {clean_info}"
     except Exception as e:
