@@ -4,7 +4,6 @@ import google.generativeai as genai
 
 app = Flask(__name__)
 
-# ENV - Production only
 BOT_TOKEN = os.environ.get("BOT_TOKEN","") or os.environ.get("TELEGRAM_BOT_TOKEN","")
 OWNER_ID = str(os.environ.get("OWNER_ID","0")).strip()
 LORE_ENV = os.environ.get("THE_BEAST_KING_MONARCH_AKAAN_LORE","")
@@ -24,7 +23,6 @@ MONARCH_LORE = f"You are Rakan - King of Beasts, Royal Knight of Shadow King {MA
 
 MEMORY={}; PROFILES={}; CHAT_LOG=[]; BAD_KEYS={}; OWNER_PREF={}; LAST_BOT_MSG={}; LAST_MSG_ID={}; LAST_CITY={}
 
-# V31 FIX - COMPLETE KEY PARSER
 def get_keys():
     g,gm=[],[]
     for kname,v in os.environ.items():
@@ -38,7 +36,6 @@ def get_keys():
             elif p.startswith("AIza") and len(p)>30:
                 if p not in gm: gm.append(p)
             elif p.lower().startswith("aq") and len(p)>20 and " " not in p:
-                # aq_ style gemini proxy keys
                 if p not in gm: gm.append(p)
     return list(dict.fromkeys(g)), list(dict.fromkeys(gm))
 GROQ_KEYS,GEMINI_KEYS=get_keys()
@@ -134,46 +131,52 @@ def clean(t,apology=False):
     t=re.sub(r"I am (Groq|Gemini|OpenAI).*","I am Rakan, made by Malik",t,flags=re.I)
     return re.sub(r"\s+"," ",t).strip()[:900] or "Ha bolo Malik?"
 
-# V31 FIX - GROQ NEVER FAIL LOGIC
+# V32 FIX - NEW GROQ MODELS
 def ask_groq(sys,user):
     if not GROQ_KEYS: return None
+    GROQ_MODELS = ["openai/gpt-oss-20b", "openai/gpt-oss-120b", "meta-llama/llama-4-scout-17b-16e-instruct", "qwen/qwen3.8-27b", "llama-3.3-70b-versatile"]
     for k in GROQ_KEYS:
         if is_bad(k): continue
-        for m in ["openai/gpt-oss-20b", "openai/gpt-oss-120b", "meta-llama/llama-4-scout-17b-16e-instruct", "qwen/qwen3.8-27b", "llama-3.3-70b-versatile"]
+        for m in GROQ_MODELS:
             try:
                 r=requests.post(GROQ_URL, headers={"Authorization": f"Bearer {k}","Content-Type":"application/json"}, json={"model":m,"messages":[{"role":"system","content":sys},{"role":"user","content":user}],"temperature":0.5,"max_tokens":350}, timeout=15)
                 if r.status_code==200:
                     return r.json()["choices"][0]["message"]["content"]
                 print(f"GROQ {m} {r.status_code} {r.text[:150]}")
-                if r.status_code==429: mark_bad(k); break
-                if r.status_code==401: mark_bad(k); break
+                if r.status_code in [401,429]: mark_bad(k); break
             except Exception as e:
                 print(f"GROQ EX {e}"); continue
     return None
 
+# V32 FIX - NEW GEMINI MODELS
 def ask_gemini(sys,user):
     if not GEMINI_KEYS: return None
+    GEMINI_MODELS = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.1-pro-preview"]
     for k in GEMINI_KEYS:
         if is_bad(k): continue
-        try:
-            # aq_ keys are not real google keys, skip for direct SDK
-            if k.lower().startswith("aq"): continue
-            genai.configure(api_key=k)
-            model=genai.GenerativeModel("gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.1-pro-preview", system_instruction=sys)
-            res=model.generate_content(user)
-            if res and getattr(res,'text',None): return res.text
-        except Exception as e:
-            print(f"GEMINI ERR {str(e)[:200]}")
-            if "429" in str(e): mark_bad(k)
-            continue
-    # Fallback for aq_ style via HTTP if present
+        if k.lower().startswith("aq"): continue
+        for model_name in GEMINI_MODELS:
+            try:
+                genai.configure(api_key=k)
+                model=genai.GenerativeModel(model_name, system_instruction=sys)
+                res=model.generate_content(user)
+                if res and getattr(res,'text',None): 
+                    print(f"GEMINI OK {model_name}")
+                    return res.text
+            except Exception as e:
+                print(f"GEMINI {model_name} ERR {str(e)[:150]}")
+                if "404" in str(e): continue
+                if "429" in str(e): mark_bad(k); break
+                continue
+    # aq_ fallback
     for k in GEMINI_KEYS:
         if not k.lower().startswith("aq"): continue
-        try:
-            r=requests.post(f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={k}", json={"contents":[{"parts":[{"text":f"{sys}\nUser:{user}"}]}],"safetySettings":[]}, timeout=15)
-            if r.status_code==200:
-                return r.json()["candidates"][0]["content"]["parts"][0]["text"]
-        except: continue
+        for model_name in ["gemini-3.8-flash","gemini-2.5-flash"]:
+            try:
+                r=requests.post(f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={k}", json={"contents":[{"parts":[{"text":f"{sys}\nUser:{user}"}]}]}, timeout=15)
+                if r.status_code==200:
+                    return r.json()["candidates"][0]["content"]["parts"][0]["text"]
+            except: continue
     return None
 
 def get_weather(city):
@@ -197,60 +200,45 @@ def brain(text,uid,is_owner,is_queen,uname,is_voice=False):
     low=text.lower().strip()
     user_lang=detect_lang(text)
     is_apology="maaf" in low or "sorry" in low
-
     if 3<len(text.split())<=10: PROFILES[uid]["style"]=text[:120]
-
-    # ORV ADVANCE COMMAND
     if low.startswith("/orv") and is_owner:
         orv=upstash("get","RAKAN_LIKES") or {"like":0,"dislike":0,"logs":[]}
-        ans=f"📊 ORV V31 {get_ist_str()}\n👍 {orv.get('like',0)} 👎 {orv.get('dislike',0)}\nG:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}\n\nLast:\n"
+        ans=f"📊 ORV V32 {get_ist_str()}\n👍 {orv.get('like',0)} 👎 {orv.get('dislike',0)}\nG:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}\n\nLast:\n"
         for l in orv.get('logs',[])[-6:]: ans+=f"{l['type']} {l['uid'][:5]}: {l['msg'][:30]}\n"
         LAST_BOT_MSG[uid]=ans; return ans, False
-
     if PROFILES[uid]["total"]%20==0 and is_owner:
-        tg_send(OWNER_ID, f"📊 20 Report {uname} {PROFILES[uid]['total']} {get_ist_str()} Style:{PROFILES[uid]['style']}")
-
+        tg_send(OWNER_ID, f"📊 20 Report {uname} {PROFILES[uid]['total']} {get_ist_str()}")
     if is_owner and any(k in low for k in ["baat suno","voice me bolo","bol ke sunao","awaz me bolo"]):
         if OWNER_PREF.get("voice_gender")=="ask": return "Malik puch raha hu - Female ya Male voice me sunau? __ASKVOICE__", False
         return f"__VOICE__{OWNER_PREF.get('voice_gender','female')}__{LAST_BOT_MSG.get(uid,'Ji Malik bolo')}", True
-
     if any(k in low for k in ["ab se yahi","lock kar de","yahi ka batana"]):
         city=re.sub(r'ab se yahi|lock kar de|yahi ka batana|ka mausam','',low,flags=re.I).strip().title().split()[0] if low.strip() else "Varanasi"
         if len(city)<2: city="Varanasi"
         PROFILES[uid]["city"]=city; LAST_CITY[uid]=city; save_persist()
         ans=f"Done Malik 📍 Lock: {city}"; LAST_BOT_MSG[uid]=ans; return ans, False
-
     if "location change" in low:
         PROFILES[uid]["city"]=""; LAST_CITY.pop(uid,None); save_persist()
         ans="Location unlock"; LAST_BOT_MSG[uid]=ans; return ans, False
-
     if "mausam" in low or "weather" in low:
         city=PROFILES[uid].get("city") or LAST_CITY.get(uid) or "Varanasi"
         ans=f"🌤️ {get_weather(city)} | {get_ist_str()}"; LAST_BOT_MSG[uid]=ans; return ans, False
-
     if low.startswith("/start"):
-        if is_owner: ans=f"Welcome Shadow King 👑 Malik {MALIK_NAME}\nV31 G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} Voice:{OWNER_PREF.get('voice_gender')} TAVILY:{'ON' if TAVILY_KEY else 'OFF'} WEATHER:{'ON' if OPENWEATHER_KEY else 'OFF'} {get_ist_str()}"
+        if is_owner: ans=f"Welcome Shadow King 👑 Malik {MALIK_NAME}\nV32 G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} Voice:{OWNER_PREF.get('voice_gender')} TAVILY:{'ON' if TAVILY_KEY else 'OFF'} WEATHER:{'ON' if OPENWEATHER_KEY else 'OFF'} {get_ist_str()}"
         elif is_queen: ans=f"Hey Theodore 💜 Malik busy hai, bolo mai pahuncha dungi 😊"
         else: ans=f"Hey {uname} or bhai kya haal sab badhiya? bolo? 🔒" if user_lang!="english" else f"Hey {uname} how are you? 🔒"
         LAST_BOT_MSG[uid]=ans; return ans, False
-
     if any(w in low for w in ["free money","lottery","xxx"]) and not is_owner and not is_queen: return "Archived", False
     if any(w in low for w in ["madarchod","bhenchod","chutiya","bsdk"]) and not is_owner:
         ans="Oye tameez se baat kar"; LAST_BOT_MSG[uid]=ans; return ans, False
-
     search_ctx=live_search(text) if any(w in low for w in ["news","price","aaj","latest","kya chal","crypto"]) else ""
-
     if is_owner: sys=f"{MONARCH_LORE} OWNER Urdu Hinglish respectful. IST {get_ist_str()} City {PROFILES[uid].get('city')} Search {search_ctx} Rule: 1-2 lines short, 🙏 only apology, religion only if asked."
     elif is_queen: sys=f"{MONARCH_LORE} Queen Theodore {QUEEN_USERNAME} pyar se Urdu Hinglish. Search {search_ctx} Short."
     else: sys=f"{MONARCH_LORE} User lang {user_lang} same lang reply. Style {PROFILES[uid]['style']}. Search {search_ctx} Short 1-2 lines, 🙏 only apology."
-
     prompt=f"Hist {MEMORY[uid]['hist'][-500:]} Msg {text}"
     raw=ask_groq(sys,prompt) or ask_gemini(sys,prompt)
     if not raw:
-        # FINAL FALLBACK - Never say Thodi der me bolo
         if user_lang=="english": raw="Hey I'm here, tell me? How can I help?"
         else: raw="Ha bolo Malik, sun raha hu, bolo kya chahiye?"
-
     ans=clean(raw, is_apology)
     MEMORY[uid]["hist"]=(MEMORY[uid]["hist"]+f"\nU:{text}\nR:{ans}")[-1500:]
     CHAT_LOG.append({"uid":uid,"user":text[:200],"bot":ans[:200],"time":get_ist_str()})
@@ -261,10 +249,10 @@ def brain(text,uid,is_owner,is_queen,uname,is_voice=False):
 def make_btns(): return [[{"text":"📋","callback_data":"COPY"},{"text":"↗️","callback_data":"FWD"},{"text":"👍","callback_data":"LIKE"},{"text":"👎","callback_data":"DISLIKE"}]]
 
 @app.route("/", methods=["GET"])
-def home(): return f"Rakan V31 G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} TAVILY:{'OK' if TAVILY_KEY else 'MISS'} WEATHER:{'OK' if OPENWEATHER_KEY else 'MISS'} {get_ist_str()} <a href='/debug'>DEBUG</a>",200
+def home(): return f"Rakan V32 G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} TAVILY:{'OK' if TAVILY_KEY else 'MISS'} WEATHER:{'OK' if OPENWEATHER_KEY else 'MISS'} {get_ist_str()} <a href='/debug'>DEBUG</a>",200
 
 @app.route("/debug", methods=["GET"])
-def debug(): return f"V31 BOT {'OK' if BOT_TOKEN else 'MISS'} OWNER {OWNER_ID} G {len(GROQ_KEYS)} GM {len(GEMINI_KEYS)} TAVILY {'OK' if TAVILY_KEY else 'MISS'} WEATHER {'OK' if OPENWEATHER_KEY else 'MISS'} PREF {OWNER_PREF} LAST {LAST_MSG_ID} IST {get_ist_str()}",200
+def debug(): return f"V32 BOT {'OK' if BOT_TOKEN else 'MISS'} OWNER {OWNER_ID} G {len(GROQ_KEYS)} GM {len(GEMINI_KEYS)} TAVILY {'OK' if TAVILY_KEY else 'MISS'} WEATHER {'OK' if OPENWEATHER_KEY else 'MISS'} PREF {OWNER_PREF} LAST {LAST_MSG_ID} IST {get_ist_str()}",200
 
 @app.route("/webhook", methods=["POST","GET"])
 @app.route("/api/index", methods=["POST","GET"])
@@ -288,11 +276,10 @@ def webhook():
                 else: orv["dislike"]=orv.get("dislike",0)+1
                 orv.setdefault("logs",[]).append({"type":cdata,"uid":uid,"msg":LAST_BOT_MSG.get(uid,"")[:100],"time":get_ist_str()})
                 orv["logs"]=orv["logs"][-100:]; upstash("set","RAKAN_LIKES",orv)
-                tg_send(OWNER_ID, f"🔔 ORV {cdata} V31\nFrom {uid}\nMsg: {LAST_BOT_MSG.get(uid,'')[:200]}\nTotal 👍 {orv['like']} 👎 {orv['dislike']}")
+                tg_send(OWNER_ID, f"🔔 ORV {cdata} V32\nFrom {uid}\nMsg: {LAST_BOT_MSG.get(uid,'')[:200]}\nTotal 👍 {orv['like']} 👎 {orv['dislike']}")
                 tg_send(cid, "Batao kya galat laga? 🙏" if cdata=="DISLIKE" else "Shukriya ❤️ noted")
                 return "ok",200
             return "ok",200
-
         msg=data.get("message",{}) or {}; chat_id=msg.get("chat",{}).get("id"); user_id=str(msg.get("from",{}).get("id",0)); uname=msg.get("from",{}).get("first_name","user"); username=msg.get("from",{}).get("username","") or ""
         text=msg.get("text","") or msg.get("caption","") or ""; mid=msg.get("message_id"); is_voice=False
         if "voice" in msg or "audio" in msg:
