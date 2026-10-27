@@ -4,6 +4,7 @@ import google.generativeai as genai
 
 app = Flask(__name__)
 
+# ============ ENV ============
 BOT_TOKEN = os.environ.get("BOT_TOKEN","") or os.environ.get("TELEGRAM_BOT_TOKEN","")
 OWNER_ID = str(os.environ.get("OWNER_ID","0") or "0")
 MY_URL = os.environ.get("MY_URL","").rstrip("/") or "https://my-telegram-bot-lime.vercel.app"
@@ -19,6 +20,7 @@ GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 MALIK_NAME="MD Saif Ahmad"; MALIK_TITLE="The Shadow King"; QUEEN_NAME="Theodore"
 MONARCH_LORE = f"You are Rakan - The Monarch, King of Beasts, Royal Knight of {MALIK_TITLE} {MALIK_NAME}. Queen {QUEEN_NAME}. Made by Malik on Vercel Flask Groq Gemini. You are NOT Groq/Gemini/OpenAI/Meta. Extra: {LORE_ENV}"
 
+# ============ MEMORY ============
 MEMORY={}; ABUSE={}; PROFILES={}; CHAT_LOG=[]; BAD_KEYS={}; LOOP_CACHE={}; OWNER_PREF={"voice_gender":"female"}; FEEDBACK_LOG=[]; LAST_CITY={}
 
 def tg_send(cid,txt,reply_id=None, buttons=None):
@@ -26,7 +28,7 @@ def tg_send(cid,txt,reply_id=None, buttons=None):
         p={"chat_id":cid,"text":txt[:3900]}
         if reply_id: p["reply_to_message_id"]=reply_id
         if buttons: p["reply_markup"]=json.dumps({"inline_keyboard": buttons})
-        r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=p, timeout=12)
+        r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=p, timeout=12)
         return r.status_code, r.text[:400]
     except Exception as e:
         return 0, str(e)
@@ -40,8 +42,8 @@ def get_weather_world(city="Varanasi"):
         if OPENWEATHER_KEY:
             r=requests.get(f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={OPENWEATHER_KEY}&units=metric", timeout=6)
             if r.status_code==200:
-                d=r.json(); return f"{d['name']}: {d['weather'][0]['description'].title()}, {d['main']['temp']}°C"
-        r=requests.get(f"https://wttr.in/{city}?format=%C+%t+%h+%w", timeout=6)
+                d=r.json(); return f"{d['name']}: {d['weather'][0]['description'].title()}, {d['main']['temp']}°C, Humidity {d['main']['humidity']}%"
+        r=requests.get(f"https://wttr.in/{city}?format=%C+%t+%h", timeout=6)
         return f"{city}: {r.text.strip()}" if r.status_code==200 else f"{city} ka data nahi mila"
     except: return f"{city} ka data nahi mila"
 
@@ -50,8 +52,8 @@ def extract_city_from_text(text):
     for pat in [r"mausam.*?(?:in|of|ka)?\s+([a-zA-Z\s]+)", r"weather.*?(?:in|of|for)?\s+([a-zA-Z\s]+)", r"([a-zA-Z\s]+?)\s+ka\s+mausam"]:
         m=re.search(pat, low)
         if m:
-            city=re.sub(r'\b(aaj|kal|ka|ki|kaisa|hai|batao)\b','',m.group(1)).strip()
-            if 3<=len(city)<=30: return city.title()
+            city=re.sub(r'\b(aaj|kal|ka|ki|kaisa|hai|batao|kya|in|of)\b','',m.group(1)).strip()
+            if 2<=len(city)<=30: return city.title()
     return None
 
 def upstash(cmd,key,val=None):
@@ -84,14 +86,14 @@ def save_persist():
     except: pass
 load_persist()
 
-# FINAL FIX - ONLY gsk_ and AIza/aq
+# ============ FINAL FIXED KEYS - NO MORE GM 18 ============
 def get_keys():
     g,gm=[],[]
     for v in os.environ.values():
         if not v: continue
         for p in str(v).replace("\n",",").split(","):
             p=p.strip().strip('"').strip("'")
-            if not p: continue
+            if not p or len(p)<10: continue
             if p.startswith("gsk_") and p not in g: g.append(p)
             elif (p.startswith("AIza") or p.startswith("aq") or p.startswith("AQ")) and p not in gm: gm.append(p)
     return list(dict.fromkeys(g)), list(dict.fromkeys(gm)), []
@@ -103,17 +105,17 @@ def detect_lang(text):
     if re.search(r'[\u0900-\u097F]', text): return "hindi"
     return "english" if len(re.findall(r'[a-zA-Z]', text)) > len(text)*0.6 else "hinglish"
 def get_lore_fresh(is_owner, user_lang):
-    return f"{MONARCH_LORE}\nIST: {get_ist_str()}\nRULES: {user_lang} 1-2 lines. Never say Groq/Gemini. Always Rakan made by Malik {MALIK_NAME}."
+    return f"{MONARCH_LORE}\nIST: {get_ist_str()}\nRULES: Reply in {user_lang}, 1-2 lines short. Never say you are Groq/Gemini. You are Rakan made by Malik {MALIK_NAME}."
 def clean(txt):
     txt=re.sub(r"I am (Groq|Gemini|OpenAI|Meta AI).*","I am Rakan, created by Malik.",txt,flags=re.IGNORECASE)
-    return re.sub(r"\s+"," ",txt).strip()[:800] or "Ha bolo Malik?"
+    return re.sub(r"\s+"," ",txt).strip()[:900] or "Ha bolo Malik?"
 
 def ask_groq(system, user):
     for k in GROQ_KEYS:
         if is_bad(k): continue
         for m in ["llama-3.3-70b-versatile","llama-3.1-8b-instant","openai/gpt-oss-120b"]:
             try:
-                r=requests.post(GROQ_URL, headers={"Authorization": f"Bearer {k}","Content-Type":"application/json"}, json={"model":m,"messages":[{"role":"system","content":system},{"role":"user","content":user}],"temperature":0.3,"max_tokens":250}, timeout=12)
+                r=requests.post(GROQ_URL, headers={"Authorization": f"Bearer {k}","Content-Type":"application/json"}, json={"model":m,"messages":[{"role":"system","content":system},{"role":"user","content":user}],"temperature":0.3,"max_tokens":300}, timeout=12)
                 if r.status_code==200: return clean(r.json()["choices"][0]["message"]["content"])
                 if r.status_code in [401,403,429]: mark_bad(k); break
             except: continue
@@ -122,7 +124,7 @@ def ask_groq(system, user):
 def ask_gemini(system, user):
     for k in GEMINI_KEYS:
         if is_bad(k): continue
-        for m in ["gemini-2.5-flash","gemini-2.0-flash","gemini-1.5-flash"]:
+        for m in ["gemini-1.5-flash","gemini-2.0-flash","gemini-2.5-flash"]:
             try:
                 genai.configure(api_key=k); model=genai.GenerativeModel(m, system_instruction=system)
                 res=model.generate_content(user)
@@ -134,8 +136,8 @@ def ask_gemini(system, user):
 
 def ask_all(system, user, is_owner):
     low=user.lower()
-    if low.strip() in ["q","qq"]: return "kyun? bolo kya hua?"
-    if "time kya" in low or "date" in low: return get_ist_str()
+    if low.strip() in ["q","qq"]: return "kyun? bolo kya hua Malik?"
+    if "time kya" in low or "date kya" in low: return get_ist_str()
     ans = ask_groq(system, user) or ask_gemini(system, user)
     if not ans:
         if len(GROQ_KEYS)==0 and len(GEMINI_KEYS)==0:
@@ -146,7 +148,7 @@ def ask_all(system, user, is_owner):
 def log_to_owner(uid, uname, user_obj, user_text, bot_reply, lang, media_type="text"):
     global CHAT_LOG
     try:
-        chat_id=user_obj.get("chat",{}).get("id"); user_id=user_obj.get("from",{}).get("id"); username=user_obj.get("from",{}).get("username","N/A")
+        user_id=user_obj.get("from",{}).get("id"); username=user_obj.get("from",{}).get("username","N/A")
         CHAT_LOG.append({"time":get_ist_str(),"uid":str(uid),"name":uname,"user":user_text[:500],"bot":bot_reply[:500]})
         if len(CHAT_LOG)>500: CHAT_LOG=CHAT_LOG[-500:]
         save_persist()
@@ -162,10 +164,14 @@ def brain(text,uid,is_owner,uname, user_obj, media_type="text"):
     PROFILES[uid]["total"]=PROFILES[uid].get("total",0)+1
     low=text.lower().strip(); user_lang=detect_lang(text)
 
-    if any(k in low for k in ["ab se yahi","ab se isi","hamesha isi","lock kar de","yahi ka batana"]):
+    if any(k in low for k in ["ab se yahi","ab se isi","hamesha isi","lock kar de","yahi ka batana","isi ka batana"]):
         city = extract_city_from_text(text) or LAST_CITY.get(uid) or "Varanasi"
         PROFILES[uid]["weather_city"]=city.title(); save_persist()
-        ans=f"Done Malik 📍 Lock: {city.title()}"; log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type); return ans, False, None
+        ans=f"Done Malik 📍 Lock: {city.title()} - Ab se hamesha isi ka bataunga"; log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type); return ans, False, None
+
+    if "location change" in low or "city change" in low:
+        PROFILES[uid]["weather_city"]=""; save_persist()
+        ans="Location unlock kar diya, naya city bolo"; log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type); return ans, False, None
 
     if any(w in low for w in ["mausam","weather"]):
         city = extract_city_from_text(text) or PROFILES[uid].get("weather_city") or LAST_CITY.get(uid) or "Varanasi"
@@ -180,7 +186,8 @@ def brain(text,uid,is_owner,uname, user_obj, media_type="text"):
         ans=f"Done Malik sikh liya: {learned[:80]}"; log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type); return ans, False, None
 
     if low in ["/start","start"]:
-        ans=f"Welcome to your world The Shadow King 👑\nG:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}\n📍 {PROFILES[uid].get('weather_city','Not set')}" if is_owner else f"Welcome {uname} bolo? 🔒"
+        city=PROFILES[uid].get("weather_city","Not set")
+        ans=f"Welcome to your world The Shadow King 👑 - Hazir hu Malik\n📍 Locked: {city}\nG:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} | {get_ist_str()}" if is_owner else f"Welcome {uname} bolo? 🔒"
         log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type); return ans, False, [["👍","👎"]]
 
     system=get_lore_fresh(is_owner,user_lang)
@@ -192,54 +199,62 @@ def brain(text,uid,is_owner,uname, user_obj, media_type="text"):
     save_persist(); log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type)
     return ans, False, [["👍","👎"]]
 
+# ============ ROUTES - FIXED /debug ============
+def debug_html():
+    out=[]
+    out.append(f"<b>BOT_TOKEN:</b> {'OK len='+str(len(BOT_TOKEN)) if BOT_TOKEN else 'MISSING ❌'}")
+    out.append(f"<b>OWNER_ID:</b> {OWNER_ID}")
+    out.append(f"<b>GROQ_KEYS:</b> {len(GROQ_KEYS)}")
+    out.append(f"<b>GEMINI_KEYS:</b> {len(GEMINI_KEYS)} -> {[k[:12]+'...' for k in GEMINI_KEYS]}")
+    out.append(f"<b>MY_URL:</b> {MY_URL}")
+    try:
+        r=requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getMe", timeout=6)
+        out.append(f"<b>getMe {r.status_code}:</b> {r.text[:500]}")
+    except Exception as e: out.append(f"<b>getMe FAIL:</b> {e}")
+    try:
+        r=requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo", timeout=6)
+        out.append(f"<b>webhookInfo:</b> {r.text[:800]}")
+    except Exception as e: out.append(f"<b>webhook FAIL:</b> {e}")
+    if GROQ_KEYS:
+        try:
+            rr=requests.post(GROQ_URL, headers={"Authorization": f"Bearer {GROQ_KEYS[0]}","Content-Type":"application/json"}, json={"model":"llama-3.1-8b-instant","messages":[{"role":"user","content":"hi"}],"max_tokens":5}, timeout=8)
+            out.append(f"<b>Groq test {rr.status_code}:</b> {rr.text[:400]}")
+        except Exception as e: out.append(f"<b>Groq FAIL:</b> {e}")
+    if GEMINI_KEYS:
+        try:
+            genai.configure(api_key=GEMINI_KEYS[0]); m=genai.GenerativeModel("gemini-1.5-flash"); res=m.generate_content("hi")
+            out.append(f"<b>Gemini OK:</b> {res.text[:150]}")
+        except Exception as e: out.append(f"<b>Gemini FAIL:</b> {str(e)[:800]}")
+    return "<br><br>".join(out)
+
 @app.route("/", methods=["GET"])
-@app.route("/api/index", methods=["GET"])
 def home():
     if BOT_TOKEN and MY_URL:
         try: requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook", params={"url":f"{MY_URL}/webhook"}, timeout=5)
         except: pass
-    return f"Rakan V20 G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} {get_ist_str()} | /debug",200
+    return f"Rakan V23 FULL G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} {get_ist_str()} | <a href='/debug'>DEBUG</a>",200
 
 @app.route("/debug", methods=["GET"])
-def debug_page():
-    out=[]
-    out.append(f"BOT_TOKEN: {'OK' if BOT_TOKEN else 'MISSING'} len={len(BOT_TOKEN)}")
-    out.append(f"OWNER_ID: {OWNER_ID}")
-    out.append(f"GROQ: {len(GROQ_KEYS)} keys")
-    out.append(f"GEMINI: {len(GEMINI_KEYS)} keys - {[k[:12]+'...' for k in GEMINI_KEYS[:3]]}")
-    out.append(f"MY_URL: {MY_URL}")
-    try:
-        r=requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getMe", timeout=5)
-        out.append(f"getMe {r.status_code}: {r.text[:300]}")
-    except Exception as e: out.append(f"getMe FAIL {e}")
-    try:
-        r=requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo", timeout=5)
-        out.append(f"webhook: {r.text[:500]}")
-    except Exception as e: out.append(f"webhook FAIL {e}")
-    if GROQ_KEYS:
-        try:
-            rr=requests.post(GROQ_URL, headers={"Authorization": f"Bearer {GROQ_KEYS[0]}"}, json={"model":"llama-3.1-8b-instant","messages":[{"role":"user","content":"hi"}],"max_tokens":5}, timeout=8)
-            out.append(f"Groq test: {rr.status_code} {rr.text[:200]}")
-        except Exception as e: out.append(f"Groq FAIL {e}")
-    if GEMINI_KEYS:
-        try:
-            genai.configure(api_key=GEMINI_KEYS[0]); m=genai.GenerativeModel("gemini-1.5-flash"); res=m.generate_content("hi")
-            out.append(f"Gemini test: OK {res.text[:80]}")
-        except Exception as e: out.append(f"Gemini FAIL {str(e)[:400]}")
-    return "<br><br>".join(out),200
+@app.route("/api/debug", methods=["GET"])
+@app.route("/api/index/debug", methods=["GET"])
+def debug_route():
+    return debug_html(),200
 
 @app.route("/webhook", methods=["POST","GET"])
-@app.route("/api/index", methods=["POST"])
+@app.route("/api/index", methods=["POST","GET"])
+@app.route("/api/index/webhook", methods=["POST","GET"])
 def webhook():
-    if request.method=="GET": return home()
+    if request.method=="GET":
+        if "debug" in request.path.lower(): return debug_html(),200
+        return home()
     try:
         data=request.get_json(silent=True) or {}
         if "callback_query" in data:
-            cq=data["callback_query"]; requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"],"text":"Thanks"}, timeout=5); return "ok",200
+            cq=data["callback_query"]; requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"],"text":"Thanks 👍"}, timeout=5); return "ok",200
         msg=data.get("message",{}) or {}; chat_id=msg.get("chat",{}).get("id"); user_id=str(msg.get("from",{}).get("id",0)); uname=msg.get("from",{}).get("first_name","user")
         text=msg.get("text","") or msg.get("caption","") or ""; message_id=msg.get("message_id")
         if not chat_id: return "ok",200
-        is_owner=(user_id==OWNER_ID); 
+        is_owner=(user_id==OWNER_ID)
         if is_owner: uname=MALIK_NAME
         if not text: return "ok",200
         ans,_,btns = brain(text,user_id,is_owner,uname,msg,"text")
@@ -250,7 +265,6 @@ def webhook():
         print(f"ERR {e} {traceback.format_exc()}"); return "ok",200
 
 @app.route("/cron", methods=["GET","POST"])
-@app.route("/api/cron", methods=["GET","POST"])
 def cron():
     try:
         from api.cron import handler as cron_handler
@@ -258,8 +272,3 @@ def cron():
         result = cron_handler(Req())
         return result.get("body","ok") if isinstance(result, dict) else str(result),200
     except: return "cron ok",200
-
-@app.route('/<path:path>', methods=['GET', 'POST'])
-def catch_all(path):
-    if request.method == 'GET': return home()
-    return webhook()
