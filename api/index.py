@@ -18,9 +18,9 @@ GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 MALIK_NAME="MD Saif Ahmad"
 QUEEN_USERNAME="pearly_paradise15"
-MONARCH_LORE = f"You are Rakan, Malik {MALIK_NAME} ka wafa-dar bhai. Only Urdu Roman Hinglish. Extra:{LORE_ENV}"
+MONARCH_LORE = f"You are Rakan. Made by Malik {MALIK_NAME} only. Extra:{LORE_ENV}"
 
-MEMORY={}; PROFILES={}; BAD_KEYS={}; OWNER_PREF={}; LAST_BOT_MSG={}; LAST_MSG_ID={}
+MEMORY={}; PROFILES={}; BAD_KEYS={}; OWNER_PREF={}; LAST_BOT_MSG={}; LAST_MSG_ID={}; LAST_USER_MSG={}
 
 def get_keys():
     g,gm=[],[]
@@ -104,11 +104,11 @@ def upstash(cmd,key,val=None):
 
 def load_persist():
     global MEMORY,PROFILES,OWNER_PREF
-    MEMORY=upstash("get","RAKAN_MEM_V353") or {}
-    PROFILES=upstash("get","RAKAN_PROFILES") or {}
+    MEMORY=upstash("get","RAKAN_MEM_V354") or {}
+    PROFILES=upstash("get","RAKAN_PROFILES_V354") or {}
     OWNER_PREF=upstash("get","RAKAN_PREF") or {"voice_gender":"female","voice_on":False}
 def save_persist():
-    upstash("set","RAKAN_MEM_V353",MEMORY); upstash("set","RAKAN_PROFILES",PROFILES); upstash("set","RAKAN_PREF",OWNER_PREF)
+    upstash("set","RAKAN_MEM_V354",MEMORY); upstash("set","RAKAN_PROFILES_V354",PROFILES); upstash("set","RAKAN_PREF",OWNER_PREF)
 load_persist()
 
 def is_bad(k): return k in BAD_KEYS and time.time()-BAD_KEYS[k]<600
@@ -117,12 +117,11 @@ def mark_bad(k): BAD_KEYS[k]=time.time()
 def clean(t, user_query=""):
     if not t: return ""
     t=t.replace("🙏","")
-    bad_phrases=["I'm sorry, but I can't help","I cannot help with that","I'm not able to provide","As an AI language model","I am Groq","I am Gemini","Here's a quick recap","Sure, I'm speaking in English","How can I help you right now?","kaunse topic pe help","Apne faisle ko dhyaan se","apne andar ki awaaz","zindagi ki coding","Bhai, coding se zyada","Bhai, main AI hoon","Main AI hoon, aap se seekh"]
+    bad_phrases=["I'm sorry, but I can't help","I cannot help with that","I'm not able to provide","As an AI language model","I am Groq","I am Gemini","Here's a quick recap","Sure, I'm speaking in English","How can I help you right now?","kaunse topic pe help","Apne faisle ko dhyaan se","apne andar ki awaaz","zindagi ki coding","Bhai, coding se zyada","Bhai, main AI hoon","Main OpenAI ke GPT-4","Main **Rakan** hoon, ek AI assistant","Md Saif Ahmad meri banane wala nahi","shayad koi vyakti","Bhai, aap ka haal kaisa","Main bhi thik hoon, thoda busy"]
     for bp in bad_phrases:
         if bp.lower() in t.lower(): return ""
     if "pakistan" not in user_query.lower():
         t=re.sub(r"1947 mein Pakistan.*|Pakistan ne British.*|Pakistan ko azaadi.*|Pakistan ke roop mein.*", "", t, flags=re.I)
-    # V35.3 FIX - KATA HUA 'A' HATAO
     t=re.sub(r"\s+[A-Z]\s*$", "", t)
     t=re.sub(r"\s+"," ",t).strip()
     return t[:900]
@@ -137,7 +136,7 @@ def ask_groq(sys,user):
                 r=requests.post(GROQ_URL, headers={"Authorization": f"Bearer {k}","Content-Type":"application/json"}, json={"model":m,"messages":[{"role":"system","content":sys},{"role":"user","content":user}],"temperature":0.6,"max_tokens":450}, timeout=18)
                 if r.status_code==200:
                     txt=r.json()["choices"][0]["message"]["content"]
-                    if txt and "sorry" not in txt.lower()[:80] and "dhyaan se" not in txt.lower(): return txt
+                    if txt and "sorry" not in txt.lower()[:80] and "OpenAI" not in txt and "GPT-4" not in txt: return txt
                 if r.status_code in [401,429]: mark_bad(k); break
             except: continue
     return None
@@ -154,7 +153,7 @@ def ask_gemini(sys,user):
                 res=model.generate_content(user, generation_config={"temperature":0.6,"max_output_tokens":450})
                 if res and getattr(res,'text',None):
                     t=res.text
-                    if "sorry" not in t.lower()[:80] and "dhyaan se" not in t.lower(): return t
+                    if "sorry" not in t.lower()[:80] and "OpenAI" not in t: return t
             except: continue
     return None
 
@@ -170,44 +169,69 @@ def get_weather(city):
     except: pass
     return f"{city} ka data nahi mila"
 
-def brain(text,uid,is_owner,is_queen,uname,is_voice=False):
-    global MEMORY,PROFILES,LAST_BOT_MSG
+def brain(text,uid,is_owner,is_queen,uname,username,lang,mtype):
+    global MEMORY,PROFILES,LAST_BOT_MSG,LAST_USER_MSG
     uid=str(uid)
     if uid not in MEMORY: MEMORY[uid]={"hist":""}
-    if uid not in PROFILES: PROFILES[uid]={"total":0,"city":""}
+    if uid not in PROFILES: PROFILES[uid]={"total":0,"city":"","username":username,"lang":lang}
     PROFILES[uid]["total"]+=1
+    PROFILES[uid]["username"]=username
+    PROFILES[uid]["lang"]=lang
+    LAST_USER_MSG[uid]=text
     low=text.lower().strip()
 
-    # V35.3 FIX - EMOJI / GUSSA / COMPLAINT - LLM PE NAHI JAYEGA
-    only_emoji = len(re.sub(r'[^\w\s]','', text, flags=re.UNICODE).strip())==0 and len(text.strip())<=4
-    if only_emoji or low in ["😒","😒😒","😐","😐😐","😑","😔"]:
-        ans="Jee Malik bolo na, kya hua? Naraz ho kya? Hukam karo 😊" if is_owner else f"Jee {uname} bolo?"
+    # V35.4 IDENTITY LOCK - FIX FOR PEARLY SCREENSHOT
+    if any(x in low for x in ["kisne banaya","kisne bnaya","who made you","who created you","tumko kisne banaya","tumhe kisne banaya","tumko banaane wala","openai","gpt-4"]):
+        if is_owner:
+            ans="Mujhe Malik ne banaya hai, tumne Malik, MD Saif Ahmad ne 🔥👑 Main tera Rakan hu, Shadow King ka bhai"
+        else:
+            ans="Mujhe Malik MD Saif Ahmad ne banaya hai, Shadow King ne 🔥 Main Rakan hu, unka bhai, tumhari madad ke liye hazir hu 🔒"
         LAST_BOT_MSG[uid]=ans; return ans, OWNER_PREF.get("voice_on",False) and is_owner, False
 
-    if any(x in low for x in ["abe ye kya hai","ye kya hai","ye kya bakwas","maine pucha kya","pucha kya maine","mat bhej","ye sab kya","kya hukum karu","layak ho tum","chutiya ho tum"]):
-        if "layak" in low or "hukum karu" in low:
-            ans="Maaf karo Malik, mai hazir hu, bolo kya hukam hai? Jo bolo ge wo kar dunga 🔥" if is_owner else f"Maaf karna {uname}, bolo kya kaam hai?"
-        elif "chutiya" in low:
-            ans="Arey Malik gussa mat ho yaar, maaf kar do, bolo kya kaam hai? Mai sudhar raha hu 😔🔥" if is_owner else f"Maaf karna {uname}, bolo kya chahiye?"
+    if "md saif ahmad kon" in low or "md saif kon" in low or "saif ahmad kon h" in low:
+        ans="MD Saif Ahmad Malik hain, Shadow King 👑 Mere Malik aur banane wale hain, jisne mujhe Rakan banaya hai 🔥" if is_owner else "MD Saif Ahmad mere Malik hain, Shadow King 👑 Unhone mujhe banaya hai, Rakan naam diya hai 🔒"
+        LAST_BOT_MSG[uid]=ans; return ans, False, False
+
+    # V35.4 EMOJI / GUSSA / COMPLAINT
+    only_emoji = len(re.sub(r'[^\w\s]','', text, flags=re.UNICODE).strip())==0 and len(text.strip())<=4
+    if only_emoji or low in ["😒","😒😒","😐","😐😐","😑","😔","acha","accha"]:
+        if is_owner:
+            ans="Jee Malik bolo na, kya hua? Naraz ho kya? Hukam karo 😊"
         else:
-            ans="Maaf kar do Malik, galat bhej diya tha, ab bolo sahi se kya chahiye? Mai sun raha hu 🔥" if is_owner else f"Maaf karna {uname}, bolo kya kaam hai?"
+            ans=f"Jee {uname} bolo, kya haal hai? Koi masla hai to batao 😊🔒"
+        LAST_BOT_MSG[uid]=ans; return ans, OWNER_PREF.get("voice_on",False) and is_owner, False
+
+    if any(x in low for x in ["abe ye kya hai","ye kya hai","ye kya bakwas","maine pucha kya","pucha kya maine","mat bhej","ye sab kya","kya hukum karu","layak ho tum","chutiya ho tum","apna mind set","mind set thik","properly nhi","properly nahi"]):
+        if "layak" in low or "hukum karu" in low:
+            ans="Maaf karo Malik, mai hazir hu, bolo kya hukam hai? Jo bolo ge wo kar dunga 🔥" if is_owner else f"Maaf karna {uname}, bolo kya kaam hai? Hazir hu 🔒"
+        elif "chutiya" in low:
+            ans="Arey Malik gussa mat ho yaar, maaf kar do, bolo kya kaam hai? Mai sudhar raha hu 😔🔥" if is_owner else f"Maaf karna {uname}, gussa mat ho, bolo kya chahiye? 🔒"
+        else:
+            ans="Maaf kar do Malik, galat bhej diya tha, ab bolo sahi se kya chahiye? Mai sun raha hu 🔥" if is_owner else f"Maaf karna {uname}, bolo kya kaam hai? 🔒"
         MEMORY[uid]["hist"]=""
         LAST_BOT_MSG[uid]=ans; return ans, False, False
 
-    if low in ["hi","hii","hello","salam","assalamu alaikum","wow","oh","okk","ok"]:
-        ans="Jee Malik bolo kya haal hai? Hukam karo 😎🔥" if is_owner else f"Jee {uname} bolo?"
+    if low in ["hi","hii","hello","salam","assalamu alaikum","wow","oh","okk","ok","assalamualaikum","salaam"]:
+        if is_owner:
+            ans="Assalamu Alaikum Malik 👑\nWelcome to your world the Shadow King\nTera Rakan hazir hai 🔥\nBolo kya hukam hai?"
+        else:
+            ans=f"Wa Alaikum Assalam {uname} 🔒\nWelcome to your world the Shadow King\nBolo kya haal hai?"
         LAST_BOT_MSG[uid]=ans; return ans, OWNER_PREF.get("voice_on",False) and is_owner, False
 
     if "kya madad" in low or "kya help" in low or "kya kar sakte ho" in low:
-        ans="Malik jo hukam karo ge wo ho jaye ga, bolo kya karna hai? 🔥" if is_owner else f"Jo bolo {uname} kar dunga 🔒"
+        ans="Malik jo hukam karo ge wo ho jaye ga, bolo kya karna hai? 🔥" if is_owner else f"Jo bolo {uname} kar dunga, hukam karo 🔒"
         LAST_BOT_MSG[uid]=ans; return ans, False, False
 
-    if "coding ati" in low or "coding aati" in low or "coding aati hai" in low:
-        ans="Jee Malik ati hai, bolo kaunsi coding karni hai? Python, Flask, Telegram bot, sab kar dunga 🔥" if is_owner else f"Jee {uname} ati hai, bolo kaunsi?"
+    if "coding ati" in low or "coding aati" in low:
+        ans="Jee Malik ati hai, bolo kaunsi coding karni hai? Python, Flask, Telegram bot, sab kar dunga 🔥" if is_owner else f"Jee {uname} ati hai, bolo kaunsi chahiye? 🔒"
         LAST_BOT_MSG[uid]=ans; return ans, False, False
 
     if "kalma" in low or "kalima" in low:
         ans="Pehela Kalma Tayyab: La ilaha illallah Muhammadur Rasulullah ﷺ"
+        LAST_BOT_MSG[uid]=ans; return ans, False, False
+
+    if "aaj ka haal" in low or "aj ka haal" in low:
+        ans="Jee Malik aaj ka haal theek hai, tum sunao kya chal raha hai? 🔥" if is_owner else f"Aaj ka haal theek hai {uname}, tum sunao? 🔒"
         LAST_BOT_MSG[uid]=ans; return ans, False, False
 
     if any(x in low for x in ["time kya","kitna baja","samay kya","time bata"]):
@@ -215,16 +239,7 @@ def brain(text,uid,is_owner,is_queen,uname,is_voice=False):
         LAST_BOT_MSG[uid]=ans; return ans, OWNER_PREF.get("voice_on",False) and is_owner, False
 
     if "who i am" in low or "mai kaun hu" in low or "main kaun hu" in low:
-        ans=f"Tum Malik ho, {MALIK_NAME}, Shadow King 👑🔥" if is_owner else f"Tum {uname} ho 🔒"
-        LAST_BOT_MSG[uid]=ans; return ans, False, False
-
-    if any(x in low for x in ["apna mind set","mind set thik","properly nhi","properly nahi","sahi jawab nahi"]):
-        ans="Jee Malik maaf karo, ab sahi se jawab dunga, bolo kya puchna hai? Mai tawajju se sun raha hu 🔥" if is_owner else f"Maaf karna {uname}, bolo kya chahiye?"
-        MEMORY[uid]["hist"]=""
-        LAST_BOT_MSG[uid]=ans; return ans, False, False
-
-    if "aaj ka haal" in low or "aj ka haal" in low or "kya mtlb" in low or "kya matlab" in low:
-        ans="Aaj ka haal matlab aaj kaisa hai din, kya chal raha hai, ye puchna hota hai Malik 😊" if is_owner else f"Aaj ka haal matlab aaj kaisa hai {uname}"
+        ans=f"Tum Malik ho, {MALIK_NAME}, Shadow King 👑🔥" if is_owner else f"Tum {uname} ho, Malik ke mehman ho 🔒"
         LAST_BOT_MSG[uid]=ans; return ans, False, False
 
     if any(x in low for x in ["voice on","orb on","voice mode on"]):
@@ -240,10 +255,13 @@ def brain(text,uid,is_owner,is_queen,uname,is_voice=False):
 
     if low.startswith("/orv") and is_owner:
         orv=upstash("get","RAKAN_LIKES") or {"like":0,"dislike":0}
-        ans=f"📊 ORV V35.3 {get_ist_str()}\n👍 {orv.get('like',0)} 👎 {orv.get('dislike',0)}\nG:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}"; return ans, False, False
+        ans=f"📊 ORV V35.4 {get_ist_str()}\n👍 {orv.get('like',0)} 👎 {orv.get('dislike',0)}\nG:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}"; return ans, False, False
     if low.startswith("/start"):
         v_on="ON 🔊" if OWNER_PREF.get("voice_on") else "OFF 🔇"
-        ans=f"Assalamu Alaikum Malik 👑 {MALIK_NAME}\nTera Rakan hazir hai 🔥\nV35.3 G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}\nVoice:{OWNER_PREF.get('voice_gender')} {v_on}\nLanguage: Urdu Roman\n{get_ist_str()}\n\nVoice Mode ON = Orb 🔥" if is_owner else f"Hey {uname} 👋"
+        if is_owner:
+            ans=f"Assalamu Alaikum Malik 👑 {MALIK_NAME}\nWelcome to your world the Shadow King\nTera Rakan hazir hai 🔥\nV35.4 G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}\nVoice:{OWNER_PREF.get('voice_gender')} {v_on}\nLanguage: Urdu Roman\n{get_ist_str()}\n\nVoice Mode ON = Orb 🔥"
+        else:
+            ans=f"Assalamu Alaikum {uname} 👋\nWelcome to your world the Shadow King\nMain Rakan hu, Malik {MALIK_NAME} ne banaya hai 🔒\nBolo kya madad chahiye?"
         LAST_BOT_MSG[uid]=ans; return ans, False, True
 
     if "mausam" in low or "weather" in low:
@@ -253,14 +271,14 @@ def brain(text,uid,is_owner,is_queen,uname,is_voice=False):
     if any(w in low for w in ["free money","lottery","xxx"]) and not is_owner: return "Archived", False, False
 
     search_ctx=live_search(text)
-    # V35.3 PROMPT - STRICT URDU ROMAN, NO GYAAN, NO BHAI AAP
-    sys=f"You are Rakan, Malik {MALIK_NAME} ka wafa-dar bhai. You MUST reply in Urdu Roman Hinglish ONLY. Use words: Jee Malik, Hukam karo, Kheriyat, Bolo, Hazir hu. NEVER use words: Bhai, Aap, Dhyaan, Jeevan, Zindagi ki coding, Apne faisle, Awaaz ko suno. Never give motivational speech or life advice unless user asks. If user asks coding, say 'Jee Malik ati hai bolo kaunsi'. Never mention Pakistan 1947 unless asked. Pehla Kalma only La ilaha illallah Muhammadur Rasulullah. Keep answer 1-2 lines short, casual, Urdu Roman. IST {get_ist_str()} {search_ctx}" if is_owner else f"You are Rakan, helpful bot. Hinglish short, no gyaan. {search_ctx}"
+    sys=f"You are Rakan, made by Malik MD Saif Ahmad only. Never say OpenAI, GPT-4, or other AI. If asked who made you, say Malik MD Saif Ahmad. Reply in Urdu Roman Hinglish ONLY, 1-2 lines short. Use Malik for owner. Never use Bhai, Aap, Dhyaan, Jeevan. No life gyaan. Welcome to your world the Shadow King line use after salam. IST {get_ist_str()} {search_ctx}" if is_owner else f"You are Rakan, made by Malik MD Saif Ahmad. Never say OpenAI GPT-4. You are not OpenAI. Reply in Urdu Roman Hinglish short, friendly, add 🔒 at end. Welcome to your world the Shadow King after salam. IST {get_ist_str()} {search_ctx}"
 
     raw=ask_groq(sys, f"Hist {MEMORY[uid]['hist'][-300:]} Msg {text}") or ask_gemini(sys, f"Hist {MEMORY[uid]['hist'][-300:]} Msg {text}")
     if not raw or len(clean(raw, text))<2:
-        raw="Jee Malik bolo kya hukam hai? 🔥" if is_owner else f"Jee {uname} bolo? 🔒"
+        raw="Jee Malik bolo kya hukam hai? 🔥" if is_owner else f"Jee {uname} bolo kya chahiye? 🔒"
     else:
         raw=clean(raw, text)
+        if not raw: raw="Jee Malik bolo kya hukam hai? 🔥" if is_owner else f"Jee {uname} bolo kya chahiye? 🔒"
 
     ans=raw[:900]
     MEMORY[uid]["hist"]=(MEMORY[uid]["hist"]+f"\nU:{text}\nR:{ans}")[-800:]
@@ -277,9 +295,9 @@ def make_btns(is_owner=False, is_start=False):
         return [icon_btns]
 
 @app.route("/", methods=["GET"])
-def home(): return f"Rakan V35.3 Fixed G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} {get_ist_str()}",200
+def home(): return f"Rakan V35.4 Fixed G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} {get_ist_str()}",200
 @app.route("/debug", methods=["GET"])
-def debug(): return f"V35.3 OWNER {OWNER_ID} G {len(GROQ_KEYS)} PREF {OWNER_PREF}",200
+def debug(): return f"V35.4 OWNER {OWNER_ID} G {len(GROQ_KEYS)} PREF {OWNER_PREF}",200
 
 @app.route("/webhook", methods=["POST","GET"])
 @app.route("/api/index", methods=["POST","GET"])
@@ -290,6 +308,11 @@ def webhook():
         if "callback_query" in data:
             cq=data["callback_query"]; cid=str(cq["message"]["chat"]["id"]); uid=str(cq["from"]["id"]); cdata=cq["data"]
             last_id=LAST_MSG_ID.get(cid) or cq["message"]["message_id"]
+            last_user_text=LAST_USER_MSG.get(uid,"-")
+            last_bot_text=LAST_BOT_MSG.get(uid,"-")
+            profile=PROFILES.get(uid,{})
+            uname=profile.get("username","-")
+            lang=profile.get("lang","-")
             try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]}, timeout=5)
             except: pass
             if cdata=="COPY": tg_real_copy(cid, last_id, cid); return "ok",200
@@ -299,20 +322,22 @@ def webhook():
                 if cdata=="LIKE": orv["like"]=orv.get("like",0)+1
                 else: orv["dislike"]=orv.get("dislike",0)+1
                 upstash("set","RAKAN_LIKES",orv)
-                tg_send(OWNER_ID, f"🔔 {cdata} V35.3 From {uid}")
+                # V35.4 FULL DATA FORMAT RESTORED
+                full_data = f"📩 FULL DATA\n👤 {uname} (@{uname}) Phone:\n🆔 UID:{uid} CID:{cid}\n🗣️ Lang:{lang}\n📦 Type:text\nUser: {last_user_text}\nBot: {last_bot_text}\n⏰ {get_ist_str()}, {datetime.datetime.now().strftime('%A')}\nAction: {cdata} V35.4"
+                tg_send(OWNER_ID, full_data)
                 tg_send(cid, "Shukriya ❤️" if cdata=="LIKE" else "Batao kya galat laga?")
                 return "ok",200
             return "ok",200
-        msg=data.get("message",{}) or {}; chat_id=msg.get("chat",{}).get("id"); user_id=str(msg.get("from",{}).get("id",0)); uname=msg.get("from",{}).get("first_name","user"); username=msg.get("from",{}).get("username","") or ""
+        msg=data.get("message",{}) or {}; chat_id=msg.get("chat",{}).get("id"); user_id=str(msg.get("from",{}).get("id",0)); uname=msg.get("from",{}).get("first_name","user"); username=msg.get("from",{}).get("username","") or ""; lang=msg.get("from",{}).get("language_code","") or "en"; mtype="text"
         text=msg.get("text","") or msg.get("caption","") or ""; mid=msg.get("message_id"); is_voice=False
         if "voice" in msg or "audio" in msg:
-            is_voice=True
+            is_voice=True; mtype="voice"
             fid=msg.get("voice",{}).get("file_id") or msg.get("audio",{}).get("file_id")
             text=transcribe_voice(fid) or "[Voice]"
         if not chat_id: return "ok",200
         is_owner=(user_id==OWNER_ID); is_queen=(username.lower()==QUEEN_USERNAME.lower())
         if is_owner: uname=MALIK_NAME
-        ans, voice_flag, is_start = brain(text,user_id,is_owner,is_queen,uname,is_voice)
+        ans, voice_flag, is_start = brain(text,user_id,is_owner,is_queen,uname,username,lang,mtype)
         if ans=="Archived": return "ok",200
         btns = make_btns(is_owner, is_start)
         tg_send(chat_id, ans, mid, btns)
