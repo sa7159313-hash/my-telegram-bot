@@ -59,7 +59,6 @@ def get_weather_world(city="Varanasi"):
 
 def extract_city_from_text(text):
     low=text.lower()
-    # Patterns: varanasi ka mausam, weather in allahabad, up ka weather, delhi weather
     patterns = [
         r"mausam.*?(?:in|of|ka)?\s+([a-zA-Z\s]+?)(?:\s+ka|\s+ki|\?|$)",
         r"weather.*?(?:in|of|for)?\s+([a-zA-Z\s]+?)(?:\s+ka|\?|$)",
@@ -199,11 +198,9 @@ def brain(text,uid,is_owner,uname, user_obj, media_type="text"):
         low=text.lower().strip()
         user_lang=detect_lang(text)
 
-        # LOCATION LOCK LOGIC
         lock_keywords = ["ab se yahi","ab se isi","hamesha isi","lock kar de","fix kar de","yahi ka batana","isi ka batana","save kar le location"]
         if any(k in low for k in lock_keywords):
             last_city = LAST_CITY.get(uid) or PROFILES[uid].get("weather_city") or extract_city_from_text(text) or "Varanasi"
-            # If city mentioned in same sentence
             city_in_same = extract_city_from_text(text)
             if city_in_same: last_city = city_in_same
             PROFILES[uid]["weather_city"]=last_city.title()
@@ -217,25 +214,21 @@ def brain(text,uid,is_owner,uname, user_obj, media_type="text"):
             ans="Location unlock kar diya, ab naya city bolo jiska weather chahiye."
             log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type); return ans, False, None
 
-        # WEATHER LOGIC - WORLD
         if any(w in low for w in ["mausam","weather","temperature","barish","garmi","thand"]):
             city = extract_city_from_text(text)
             if city:
                 LAST_CITY[uid]=city
             else:
                 city = PROFILES[uid].get("weather_city") or LAST_CITY.get(uid) or "Varanasi"
-                # If generic weather ask without city, use locked city
                 if PROFILES[uid].get("weather_city"):
                     city = PROFILES[uid]["weather_city"]
             
             weather_info = get_weather_world(city)
-            # Save last city for lock suggestion
             LAST_CITY[uid]=city
 
             if is_owner:
                 ans = f"🌤️ {weather_info}\n📍 City: {city.title()} | {get_ist_str()}\n\nYe location lock kar du Malik? Bolo 'ab se isi ka batana' to fix kar dunga."
             else:
-                # For other users, personal assistant style
                 if PROFILES[uid].get("weather_city"):
                     ans = f"🌤️ {weather_info}\n📍 Your locked city: {city.title()} - {get_ist_str()} 🔒"
                 else:
@@ -243,7 +236,6 @@ def brain(text,uid,is_owner,uname, user_obj, media_type="text"):
             
             log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type); return ans, False, None
 
-        # Rest all old logic same
         if is_owner and ("yaha ye daal de" in low or "isko aise fix kar" in low or "ye sikh le" in low):
             learned = text.replace("yaha ye daal de","").replace("isko aise fix kar","").replace("ye sikh le","").strip()
             if len(learned)>5:
@@ -271,7 +263,10 @@ def brain(text,uid,is_owner,uname, user_obj, media_type="text"):
     except Exception as e:
         return "Theek hai Malik, network slow hai, phir bolo?", False, None
 
+# ========== V17 WORLD WEATHER FIX - 404 KHATAM ==========
+
 @app.route("/", methods=["GET"])
+@app.route("/api/index", methods=["GET"])
 def home():
     if BOT_TOKEN and MY_URL:
         try: requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook", params={"url":f"{MY_URL}/webhook"}, timeout=5)
@@ -279,8 +274,9 @@ def home():
     return f"Rakan V17 WORLD WEATHER LOCK G:{len(GROQ_KEYS)} {get_ist_str()}",200
 
 @app.route("/webhook", methods=["POST","GET"])
+@app.route("/api/index", methods=["POST"])
 def webhook():
-    if request.method=="GET": return "Webhook OK "+get_ist_str(),200
+    if request.method=="GET": return home()
     try:
         data=request.get_json(silent=True) or {}; 
         if "callback_query" in data:
@@ -308,11 +304,20 @@ def webhook():
     except: return "ok",200
 
 @app.route("/cron", methods=["GET","POST"])
+@app.route("/api/cron", methods=["GET","POST"])
 def cron():
     try:
-        # Old route for backward compat
         from api.cron import handler as cron_handler
         class Req: pass
-        return cron_handler(Req()).get("body","ok"),200
+        result = cron_handler(Req())
+        body = result.get("body","ok") if isinstance(result, dict) else str(result)
+        return body,200
     except:
         return "cron ok",200
+
+# FINAL CATCH ALL - ISSE 404 HAMESHA KHATAM
+@app.route('/<path:path>', methods=['GET', 'POST'])
+def catch_all(path):
+    if request.method == 'GET':
+        return home()
+    return webhook()
