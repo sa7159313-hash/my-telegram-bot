@@ -1,1 +1,8 @@
-{"crons": [{"path": "/api/index/cron", "schedule": "0 * * * *"}]}
+{
+  "crons": [
+    {
+      "path": "/cron",
+      "schedule": "0 * * * *"
+    }
+  ]
+}
