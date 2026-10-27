@@ -106,6 +106,7 @@ def save_persist():
     except: pass
 load_persist()
 
+# ========== FIXED - AQ + AIza + gsk_ SAB SUPPORT ==========
 def get_keys():
     try:
         g,gm=[],[]
@@ -113,11 +114,21 @@ def get_keys():
             if not v: continue
             raw=str(v); parts=[p.strip().strip('"').strip("'") for p in raw.replace("\n",",").split(",") if p.strip()]
             for p in parts:
-                if p.startswith("gsk_") and p not in g: g.append(p)
-                if p.startswith("AIza") and p not in gm: gm.append(p)
+                if p.startswith("gsk_") and p not in g: 
+                    g.append(p)
+                # Gemini new keys start with aq / AQ or AIza
+                elif (p.startswith("AIza") or p.startswith("aq") or p.startswith("AQ")) and p not in gm:
+                    gm.append(p)
+                # Fallback: agar koi bada key hai jo telegram token nahi hai, usko bhi Gemini maan lo
+                elif len(p) > 35 and ":" not in p and "http" not in p.lower() and "vercel" not in p.lower() and "upstash" not in p.lower():
+                    if not p.startswith("gsk_") and p not in gm and p not in g:
+                        # Telegram token 45+ chars hota hai but usme : hota hai, usko skip kiya upar
+                        if p not in gm:
+                            gm.append(p)
         return list(dict.fromkeys(g)),list(dict.fromkeys(gm)),[]
     except: return [],[],[]
 GROQ_KEYS,GEMINI_KEYS,OPENAI_KEYS=get_keys()
+
 def is_bad(k): return k in BAD_KEYS and time.time()-BAD_KEYS[k]<900
 def mark_bad(k): BAD_KEYS[k]=time.time()
 def detect_lang(text):
@@ -263,15 +274,13 @@ def brain(text,uid,is_owner,uname, user_obj, media_type="text"):
     except Exception as e:
         return "Theek hai Malik, network slow hai, phir bolo?", False, None
 
-# ========== V17 WORLD WEATHER FIX - 404 KHATAM ==========
-
 @app.route("/", methods=["GET"])
 @app.route("/api/index", methods=["GET"])
 def home():
     if BOT_TOKEN and MY_URL:
         try: requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook", params={"url":f"{MY_URL}/webhook"}, timeout=5)
         except: pass
-    return f"Rakan V17 WORLD WEATHER LOCK G:{len(GROQ_KEYS)} {get_ist_str()}",200
+    return f"Rakan V17 WORLD WEATHER LOCK G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} {get_ist_str()}",200
 
 @app.route("/webhook", methods=["POST","GET"])
 @app.route("/api/index", methods=["POST"])
@@ -315,7 +324,6 @@ def cron():
     except:
         return "cron ok",200
 
-# FINAL CATCH ALL - ISSE 404 HAMESHA KHATAM
 @app.route('/<path:path>', methods=['GET', 'POST'])
 def catch_all(path):
     if request.method == 'GET':
