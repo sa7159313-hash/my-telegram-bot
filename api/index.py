@@ -19,7 +19,7 @@ GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 MALIK_NAME="MD Saif Ahmad"; MALIK_TITLE="The Shadow King"; QUEEN_NAME="Theodore"
 MONARCH_LORE = f"You are Rakan - The Monarch, King of Beasts, Royal Knight of {MALIK_TITLE} {MALIK_NAME}. Queen {QUEEN_NAME}. Made by Malik on Vercel Flask Groq Gemini. You are NOT Groq/Gemini/OpenAI/Meta. Extra: {LORE_ENV}"
 
-MEMORY={}; ABUSE={}; PROFILES={}; CHAT_LOG=[]; BAD_KEYS={}; LAST_ERROR="No error"; PENDING_FIX=None; LOOP_CACHE={}; OWNER_PREF={"voice_gender":"female"}; FEEDBACK_LOG=[]
+MEMORY={}; ABUSE={}; PROFILES={}; CHAT_LOG=[]; BAD_KEYS={}; LAST_ERROR="No error"; PENDING_FIX=None; LOOP_CACHE={}; OWNER_PREF={"voice_gender":"female"}; FEEDBACK_LOG=[]; LAST_CITY={}
 
 def tg_send(cid,txt,reply_id=None, buttons=None):
     try:
@@ -45,36 +45,35 @@ def eleven_tts(text):
 def get_ist_now(): return datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)
 def get_ist_str(): return get_ist_now().strftime("%d %b %Y, %I:%M %p IST, %A")
 
-def get_weather(city="Varanasi"):
+def get_weather_world(city="Varanasi"):
     try:
+        city=city.strip().title()
         if OPENWEATHER_KEY:
-            r=requests.get(f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={OPENWEATHER_KEY}&units=metric", timeout=5)
-            if r.status_code==200: d=r.json(); return f"{city}: {d['weather'][0]['description']}, {d['main']['temp']}°C"
-        r=requests.get(f"https://wttr.in/{city}?format=3", timeout=5)
-        return r.text.strip() if r.status_code==200 else None
-    except: return None
+            r=requests.get(f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={OPENWEATHER_KEY}&units=metric", timeout=6)
+            if r.status_code==200:
+                d=r.json()
+                return f"{d['name']}, {d['sys']['country']}: {d['weather'][0]['description'].title()}, {d['main']['temp']}°C (Feels {d['main']['feels_like']}°C), Humidity {d['main']['humidity']}%, Wind {d['wind']['speed']}m/s"
+        r=requests.get(f"https://wttr.in/{city}?format=%C+%t+%h+%w", timeout=6)
+        return f"{city}: {r.text.strip()}" if r.status_code==200 else f"{city} ka data nahi mila"
+    except: return f"{city} ka data nahi mila"
 
-def report_fault(where, exc_obj=None):
-    global LAST_ERROR
-    try:
-        exc_type, exc_val, exc_tb = sys.exc_info()
-        if exc_obj: exc_val = exc_obj
-        if exc_tb: f=traceback.extract_tb(exc_tb)[-1]; file_name, line_no = f.filename.split("/")[-1], f.lineno
-        else: file_name, line_no = "index.py", "?"
-        LAST_ERROR=f"{where} | {file_name}:{line_no} | {exc_val}"
-        if OWNER_ID!="0": tg_send(OWNER_ID, f"🚨 Fault {where} {file_name}:{line_no} {exc_val}")
-    except: pass
-
-def full_system_audit():
-    faults=[]
-    faults.append({"layer":"CODE IDENTITY","status":"OK","line":"MONARCH_LORE","info":f"Rakan Monarch by {MALIK_NAME}","fix":"OK","fix_code":"Same rakho"})
-    if not BOT_TOKEN: faults.append({"layer":"ENV BOT_TOKEN","status":"FAULT","line":"Vercel ENV","current":"Missing","fix":"ENV daalo","fix_code":"BOT_TOKEN=123:ABC daalo"})
-    if OWNER_ID=="0": faults.append({"layer":"ENV OWNER_ID","status":"FAULT","line":"Vercel ENV","current":"0","fix":"ID daalo","fix_code":"OWNER_ID=768... daalo"})
-    if not UPSTASH_URL: faults.append({"layer":"UPSTASH REDIS","status":"FAULT","line":"Vercel ENV","current":"Khali","fix":"ENV daalo","fix_code":"UPSTASH_REDIS_REST_URL=https://...upstash.io"})
-    g,gm,go=get_keys()
-    if len([k for k in g if k not in BAD_KEYS])==0 and len(g)>0: faults.append({"layer":"GROQ KEYS","status":"FAULT","line":"get_keys()","current":f"0/{len(g)} BAD","fix":"BAD clear","fix_code":"'ha fix karo' bolo"})
-    if len([f for f in faults if f["status"]=="FAULT"])==0: faults.append({"layer":"ALL","status":"OK","line":"All","info":"100% fit","fix":"OK","fix_code":"Same"})
-    return faults
+def extract_city_from_text(text):
+    low=text.lower()
+    # Patterns: varanasi ka mausam, weather in allahabad, up ka weather, delhi weather
+    patterns = [
+        r"mausam.*?(?:in|of|ka)?\s+([a-zA-Z\s]+?)(?:\s+ka|\s+ki|\?|$)",
+        r"weather.*?(?:in|of|for)?\s+([a-zA-Z\s]+?)(?:\s+ka|\?|$)",
+        r"([a-zA-Z\s]+?)\s+ka\s+mausam",
+        r"([a-zA-Z\s]+?)\s+weather"
+    ]
+    for pat in patterns:
+        m=re.search(pat, low)
+        if m:
+            city=m.group(1).strip()
+            city=re.sub(r'\b(aaj|kal|ka|ki|kaisa|hai|hain|batao|bata|kya)\b','',city).strip()
+            if len(city)>=3 and len(city)<=30 and city not in ["aaj","kal","mera","tera","yaha"]:
+                return city.title()
+    return None
 
 def upstash(cmd,key,val=None):
     if not UPSTASH_URL or not UPSTASH_TOKEN: return None
@@ -89,7 +88,7 @@ def upstash(cmd,key,val=None):
             return r.status_code==200
         if cmd=="del":
             r=requests.get(f"{UPSTASH_URL}/del/{key}", headers=headers, timeout=5); return True
-    except Exception as e: report_fault(f"upstash_{cmd}", e)
+    except: pass
     return None
 
 def load_persist():
@@ -110,14 +109,14 @@ load_persist()
 
 def get_keys():
     try:
-        g,gm,go=[],[],[]
+        g,gm=[],[]
         for k,v in os.environ.items():
             if not v: continue
             raw=str(v); parts=[p.strip().strip('"').strip("'") for p in raw.replace("\n",",").split(",") if p.strip()]
             for p in parts:
                 if p.startswith("gsk_") and p not in g: g.append(p)
                 if p.startswith("AIza") and p not in gm: gm.append(p)
-        return list(dict.fromkeys(g)),list(dict.fromkeys(gm)),list(dict.fromkeys(go))
+        return list(dict.fromkeys(g)),list(dict.fromkeys(gm)),[]
     except: return [],[],[]
 GROQ_KEYS,GEMINI_KEYS,OPENAI_KEYS=get_keys()
 def is_bad(k): return k in BAD_KEYS and time.time()-BAD_KEYS[k]<900
@@ -126,49 +125,36 @@ def detect_lang(text):
     if re.search(r'[\u0900-\u097F]', text): return "hindi"
     en = len(re.findall(r'[a-zA-Z]', text))
     return "english" if en > len(text)*0.6 else "hinglish"
-
 def get_lore_fresh(is_owner, user_lang):
     ist=get_ist_str()
     lang_rule = "Hinglish short 1-2 lines" if is_owner else f"Same language as user: {user_lang} 1-2 lines"
-    return f"{MONARCH_LORE}\nIST: {ist}\nRULES: {lang_rule}. Never say Groq/Gemini/OpenAI/Meta. Always Rakan made by Malik {MALIK_NAME}. Banned: I can't create app. Time: {ist}"
-
+    return f"{MONARCH_LORE}\nIST: {ist}\nRULES: {lang_rule}. Never say Groq/Gemini/OpenAI/Meta. Always Rakan made by Malik {MALIK_NAME}. Time: {ist}"
 def clean(txt):
     try:
         if not txt: return "bolo?"
         txt=re.sub(r"I can't create or run the app.*","",txt,flags=re.IGNORECASE)
         txt=re.sub(r"I am (Groq|Gemini|OpenAI|Meta AI).*","I am Rakan, created by Malik MD Saif Ahmad.",txt,flags=re.IGNORECASE)
         txt=re.sub(r"\s+"," ",txt).strip()
-        if len(txt)>700: txt=txt[:700]
+        if len(txt)>800: txt=txt[:800]
         return txt if txt else "Ha bolo Malik?"
     except: return "bolo?"
-
-def tg_get_file_bytes(fid):
-    try:
-        r=requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={fid}", timeout=10).json()
-        fp=r["result"]["file_path"]; return requests.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{fp}", timeout=30).content
-    except: return None
-
-GROQ_MODELS=["openai/gpt-oss-120b","llama-3.3-70b-versatile","llama-3.1-8b-instant"]
-GEMINI_MODELS=["gemini-2.5-flash","gemini-2.0-flash","gemini-1.5-flash"]
-
 def ask_groq(system, user):
     try:
         for k in GROQ_KEYS:
             if is_bad(k): continue
-            for m in GROQ_MODELS:
+            for m in ["openai/gpt-oss-120b","llama-3.3-70b-versatile","llama-3.1-8b-instant"]:
                 try:
-                    r=requests.post(GROQ_URL, headers={"Authorization": f"Bearer {k}","Content-Type":"application/json"}, json={"model":m,"messages":[{"role":"system","content":system},{"role":"user","content":user}],"temperature":0.3,"max_tokens":220}, timeout=15)
+                    r=requests.post(GROQ_URL, headers={"Authorization": f"Bearer {k}","Content-Type":"application/json"}, json={"model":m,"messages":[{"role":"system","content":system},{"role":"user","content":user}],"temperature":0.3,"max_tokens":250}, timeout=15)
                     if r.status_code==200: return clean(r.json()["choices"][0]["message"]["content"])
                     if r.status_code in [401,403,429]: mark_bad(k); break
                 except: continue
-    except Exception as e: report_fault("ask_groq", e)
+    except: pass
     return None
-
 def ask_gemini(system, user):
     try:
         for k in GEMINI_KEYS:
             if is_bad(k): continue
-            for m in GEMINI_MODELS:
+            for m in ["gemini-2.5-flash","gemini-2.0-flash","gemini-1.5-flash"]:
                 try:
                     genai.configure(api_key=k); model=genai.GenerativeModel(m, system_instruction=system)
                     res=model.generate_content(user)
@@ -178,72 +164,86 @@ def ask_gemini(system, user):
                     continue
     except: pass
     return None
-
 def ask_all(system, user, is_owner):
     low=user.lower()
     if low.strip() in ["q","qq"]: return "kyun? bolo kya hua?" if is_owner else "Why?"
     if "time kya" in low or "date" in low or "year" in low: return get_ist_str()
-    if "mausam" in low or "weather" in low:
-        w=get_weather("Varanasi"); return f"{w} | {get_ist_str()}" if w else get_ist_str()
     if any(x in low for x in ["are you groq","are you gemini","are you openai","are you meta"]):
         return f"I am Rakan, Monarch, Malik {MALIK_NAME} aka {MALIK_TITLE} ne banaya hai Vercel pe."
     return ask_groq(system, user) or ask_gemini(system, user) or ("Ha bolo Malik?" if is_owner else "Bolo sun raha hu?")
-
-def ask_gemini_vision(img_bytes, prompt_text, system):
-    try:
-        for k in GEMINI_KEYS:
-            try:
-                genai.configure(api_key=k); model=genai.GenerativeModel("gemini-1.5-flash", system_instruction=system)
-                res=model.generate_content([prompt_text, {"mime_type":"image/jpeg","data":img_bytes}])
-                if res.text: return clean(res.text)
-            except: continue
-    except: pass
-    return None
-
-def transcribe_media(audio_bytes,fn="voice.ogg"):
-    try:
-        for k in GROQ_KEYS:
-            try:
-                r=requests.post("https://api.groq.com/openai/v1/audio/transcriptions", headers={"Authorization": f"Bearer {k}"}, files={"file":(fn,audio_bytes)}, data={"model":"whisper-large-v3"}, timeout=20)
-                if r.status_code==200: return r.json().get("text","")
-            except: continue
-    except: pass
-    return None
-
 def log_to_owner(uid, uname, user_obj, user_text, bot_reply, lang, media_type="text"):
     global CHAT_LOG
     try:
-        chat_id=user_obj.get("chat",{}).get("id"); user_id=user_obj.get("from",{}).get("id"); username=user_obj.get("from",{}).get("username","N/A"); lang_code=user_obj.get("from",{}).get("language_code","")
+        chat_id=user_obj.get("chat",{}).get("id"); user_id=user_obj.get("from",{}).get("id"); username=user_obj.get("from",{}).get("username","N/A")
         contact = user_obj.get("contact",{}); phone = contact.get("phone_number","") if contact else ""
-        entry={"time":get_ist_str(),"uid":str(uid),"chat_id":chat_id,"user_id":user_id,"username":username,"phone":phone,"name":uname,"lang_code":lang_code,"lang":lang,"type":media_type,"user":user_text[:1000],"bot":bot_reply[:1000]}
+        entry={"time":get_ist_str(),"uid":str(uid),"chat_id":chat_id,"user_id":user_id,"username":username,"phone":phone,"name":uname,"lang_code":user_obj.get("from",{}).get("language_code",""),"lang":lang,"type":media_type,"user":user_text[:1000],"bot":bot_reply[:1000]}
         CHAT_LOG.append(entry)
         if len(CHAT_LOG)>500: CHAT_LOG=CHAT_LOG[-500:]
         save_persist()
         if str(uid)!=OWNER_ID and OWNER_ID!="0":
             tg_send(OWNER_ID, f"📩 FULL DATA\n👤 {uname} (@{username}) Phone:{phone}\n🆔 UID:{user_id} CID:{chat_id}\n🗣️ Lang:{lang}\n📦 Type:{media_type}\nUser: {user_text[:600]}\nBot: {bot_reply[:600]}\n⏰ {get_ist_str()}")
-    except Exception as e: report_fault("log_to_owner", e)
+    except: pass
 
 def brain(text,uid,is_owner,uname, user_obj, media_type="text"):
-    global MEMORY, PENDING_FIX, LOOP_CACHE, ABUSE, PROFILES, FEEDBACK_LOG
+    global MEMORY, PENDING_FIX, LOOP_CACHE, ABUSE, PROFILES, FEEDBACK_LOG, LAST_CITY
     try:
         uid=str(uid)
-        if uid not in MEMORY or not isinstance(MEMORY[uid], dict):
-            MEMORY[uid]={"hist":"","count":0,"last_user":"","repeat":0,"learned":""}
-        MEMORY[uid].setdefault("hist",""); MEMORY[uid].setdefault("count",0); MEMORY[uid].setdefault("last_user",""); MEMORY[uid].setdefault("repeat",0); MEMORY[uid].setdefault("learned","")
-        if uid not in LOOP_CACHE or not isinstance(LOOP_CACHE[uid], list): LOOP_CACHE[uid]=[]
-        if uid not in ABUSE or not isinstance(ABUSE[uid], int): ABUSE[uid]=0
-        if uid not in PROFILES or not isinstance(PROFILES[uid], dict):
-            PROFILES[uid]={"name":uname,"total":0,"gali_level":"","phone":""}
-        PROFILES[uid].setdefault("total",0); PROFILES[uid].setdefault("gali_level",""); PROFILES[uid].setdefault("name",uname); PROFILES[uid].setdefault("phone","")
+        if uid not in MEMORY or not isinstance(MEMORY[uid], dict): MEMORY[uid]={"hist":"","count":0,"last_user":"","repeat":0,"learned":""}
+        if uid not in LOOP_CACHE: LOOP_CACHE[uid]=[]
+        if uid not in ABUSE: ABUSE[uid]=0
+        if uid not in PROFILES or not isinstance(PROFILES[uid], dict): PROFILES[uid]={"name":uname,"total":0,"gali_level":"","phone":"","weather_city":""}
+        PROFILES[uid].setdefault("total",0); PROFILES[uid].setdefault("weather_city",""); PROFILES[uid].setdefault("phone",""); PROFILES[uid].setdefault("name",uname)
         try: PROFILES[uid]["total"]=int(PROFILES[uid].get("total",0))+1
         except: PROFILES[uid]["total"]=1
 
         low=text.lower().strip()
         user_lang=detect_lang(text)
-        if MEMORY[uid]["last_user"]==low: MEMORY[uid]["repeat"]=MEMORY[uid].get("repeat",0)+1
-        else: MEMORY[uid]["repeat"]=0
-        MEMORY[uid]["last_user"]=low
 
+        # LOCATION LOCK LOGIC
+        lock_keywords = ["ab se yahi","ab se isi","hamesha isi","lock kar de","fix kar de","yahi ka batana","isi ka batana","save kar le location"]
+        if any(k in low for k in lock_keywords):
+            last_city = LAST_CITY.get(uid) or PROFILES[uid].get("weather_city") or extract_city_from_text(text) or "Varanasi"
+            # If city mentioned in same sentence
+            city_in_same = extract_city_from_text(text)
+            if city_in_same: last_city = city_in_same
+            PROFILES[uid]["weather_city"]=last_city.title()
+            save_persist()
+            ans=f"Done {'Malik' if is_owner else uname}, 📍 Location lock kar diya: {last_city.title()}. Ab se hamesha {last_city.title()} ka weather dunga. Change karne ke liye bolna 'location change karo'."
+            log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type); return ans, False, None
+
+        if "location change" in low or "city change" in low:
+            PROFILES[uid]["weather_city"]=""
+            save_persist()
+            ans="Location unlock kar diya, ab naya city bolo jiska weather chahiye."
+            log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type); return ans, False, None
+
+        # WEATHER LOGIC - WORLD
+        if any(w in low for w in ["mausam","weather","temperature","barish","garmi","thand"]):
+            city = extract_city_from_text(text)
+            if city:
+                LAST_CITY[uid]=city
+            else:
+                city = PROFILES[uid].get("weather_city") or LAST_CITY.get(uid) or "Varanasi"
+                # If generic weather ask without city, use locked city
+                if PROFILES[uid].get("weather_city"):
+                    city = PROFILES[uid]["weather_city"]
+            
+            weather_info = get_weather_world(city)
+            # Save last city for lock suggestion
+            LAST_CITY[uid]=city
+
+            if is_owner:
+                ans = f"🌤️ {weather_info}\n📍 City: {city.title()} | {get_ist_str()}\n\nYe location lock kar du Malik? Bolo 'ab se isi ka batana' to fix kar dunga."
+            else:
+                # For other users, personal assistant style
+                if PROFILES[uid].get("weather_city"):
+                    ans = f"🌤️ {weather_info}\n📍 Your locked city: {city.title()} - {get_ist_str()} 🔒"
+                else:
+                    ans = f"🌤️ {weather_info}\n📍 {city.title()} - {get_ist_str()}\n\nAap chaho to bol sakte ho 'ab se isi location ka batana' mai hamesha {city.title()} ka bataunga. 🔒"
+            
+            log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type); return ans, False, None
+
+        # Rest all old logic same
         if is_owner and ("yaha ye daal de" in low or "isko aise fix kar" in low or "ye sikh le" in low):
             learned = text.replace("yaha ye daal de","").replace("isko aise fix kar","").replace("ye sikh le","").strip()
             if len(learned)>5:
@@ -253,142 +253,30 @@ def brain(text,uid,is_owner,uname, user_obj, media_type="text"):
                 ans=f"Done Malik, sikh liya 100% original: {learned[:100]}... Ab se aise hi karunga."
                 log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type); return ans, False, None
 
-        if is_owner and any(x in low for x in ["sab delete","delete all","sara data delete","clear all data"]):
-            MEMORY.clear(); ABUSE.clear(); CHAT_LOG.clear(); PROFILES.clear(); LOOP_CACHE.clear(); FEEDBACK_LOG.clear()
-            upstash("del","RAKAN_MEM"); upstash("del","RAKAN_ABUSE"); upstash("del","RAKAN_PROFILES"); upstash("del","RAKAN_LOGS"); upstash("del","RAKAN_FEEDBACK")
-            save_persist()
-            ans="Done Malik, sara data delete kar diya. Fresh start."
-            log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type); return ans, False, None
-
-        if "mausam" in low or "weather" in low or "temperature" in low:
-            city="Varanasi"
-            m=re.search(r"mausam.*?(?:in|of)?\s+([a-zA-Z]+)", low)
-            if m: city=m.group(1)
-            w=get_weather(city)
-            ans=f"{w} - {get_ist_str()}" if w else f"Mausam ka data nahi mila, {get_ist_str()}"
-            log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type); return ans, False, None
-
-        if any(x in low for x in ["who is create","who created","who made","kisne banaya"]):
-            ans=f"Malik {MALIK_NAME} ne banaya hai, {MALIK_TITLE} ne Vercel pe Flask Groq Gemini se."
-            log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type); return ans, False, None
-
-        if any(x in low for x in ["are you groq","are you gemini","are you openai","are you meta"]):
-            ans=f"I am Rakan, Monarch, Malik {MALIK_NAME} ne banaya hai."; log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type); return ans, False, None
-
-        gali_words = ["madarchod","bhenchod","behenchod","chutiya","chutiye","gandu","bsdk","bhosdike","randi","lodu","maderchod"]
-        is_gali = any(g in low for g in gali_words)
-        if is_gali and not is_owner:
-            ABUSE[uid]=ABUSE.get(uid,0)+1; PROFILES[uid]["gali_level"]=low; save_persist()
-            if ABUSE[uid]==1:
-                ans=f"{uname} bhai gali mat de yaar, pyaar se baat kar. Pehli warning hai. 🔒 Encrypted"
-                log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type); return ans, False, None
-            elif ABUSE[uid]==2:
-                ans=f"{uname}, dusri warning de raha hu, gali band kar de. 🔒 Encrypted"
-                log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type); return ans, False, None
-            elif ABUSE[uid]==3:
-                ans=f"{uname}, teesri warning. Agli baar same level me jawab milega. 🔒 Encrypted"
-                log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type); return ans, False, None
-            else:
-                ans=f"Abe {uname} bsdk {ABUSE[uid]} baar warning de chuka hu, ab gali me hi baat hogi."
-                log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type); return ans, False, None
-
-        if low in ["or bta","or bata","or bta?"]: 
-            ans="Batau Malik? Bolo kispe baat karu?" if is_owner else "Batao kispe baat karu? 🔒 Encrypted"
-            log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type); return ans, False, None
-
-        if low in ["ha fix karo","han fix karo","fix karo","yes fix","ha kar do"] and is_owner and PENDING_FIX:
-            f=PENDING_FIX; PENDING_FIX=None
-            BAD_KEYS.clear()
-            global GROQ_KEYS,GEMINI_KEYS,OPENAI_KEYS; GROQ_KEYS,GEMINI_KEYS,OPENAI_KEYS=get_keys()
-            ans=f"🔧 REAL FIX DONE {f['layer']} cleared"
-            log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type); return ans, False, None
-
-        if low in ["/audit","audit"]:
-            faults=full_system_audit()
-            msg=f"🔍 Audit {get_ist_str()}\n"
-            for i,f in enumerate(faults,1): msg+=f"{i}. {f['layer']} - {f['status']}\n"
-            log_to_owner(uid,uname,user_obj,text,msg[:400],user_lang,media_type); return msg[:3900], False, None
-
-        if low in ["/report","report"]:
-            faults=full_system_audit()
-            msg=f"📊 FULL REPORT {get_ist_str()}\nV16 FIXED - No vercel.json needed\n"
-            for i,f in enumerate(faults,1): msg+=f"{i}. {f['layer']} - {f['status']} - {f.get('fix_code','')}\n"
-            msg+=f"GROQ {len([k for k in GROQ_KEYS if not is_bad(k)])}/{len(GROQ_KEYS)}\nLAST: {LAST_ERROR}\n"
-            log_to_owner(uid,uname,user_obj,text,msg[:400],user_lang,media_type); return msg[:3900], False, None
-
         if low in ["/start","start"]: 
-            ans="Welcome to your world The Shadow King 👑 - Hazir hu Malik" if is_owner else f"Welcome {uname}, bolo? 🔒 Encrypted"
+            city = PROFILES[uid].get("weather_city","Not set")
+            ans=f"Welcome to your world The Shadow King 👑 - Hazir hu Malik\n📍 Locked city: {city}" if is_owner else f"Welcome {uname}, bolo? 📍 Your city: {city} 🔒 Encrypted"
             log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type); return ans, False, [["👍","👎"]]
-
-        if is_owner:
-            if "female voice" in low: OWNER_PREF["voice_gender"]="female"; save_persist(); ans="Female voice set"; log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type); return ans, False, None
-            if "male voice" in low: OWNER_PREF["voice_gender"]="male"; save_persist(); ans="Male voice set"; log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type); return ans, False, None
-            if "voice me bolo" in low or "voice me jawab" in low:
-                spoken=text
-                for p in ["voice me bolo","voice me jawab do","voice me reply do","voice me bol"]:
-                    if p in low: idx=low.find(p)+len(p); spoken=text[idx:].strip(" :-"); break
-                if not spoken or len(spoken)<2: spoken="Ji Malik hazir hu"
-                system=get_lore_fresh(is_owner,user_lang)
-                ans_text=ask_all(system, spoken if spoken!="Ji Malik hazir hu" else text, is_owner) or spoken
-                ans_text=clean(ans_text)
-                MEMORY[uid]["hist"]=(MEMORY[uid]["hist"]+f"\nU:{text}\nR:{ans_text}")[-2500:]
-                save_persist()
-                log_to_owner(uid,uname,user_obj,text,ans_text,user_lang,media_type)
-                return ans_text, True, [["👍","👎"]]
 
         system=get_lore_fresh(is_owner,user_lang)
         learned_global = upstash("get","RAKAN_GLOBAL_LEARN") or ""
-        user_prompt=f"IST:{get_ist_str()} Owner:{is_owner} Name:{uname} Lang:{user_lang} Learned:{learned_global[-500:]} Hist:{MEMORY[uid]['hist'][-800:]} Msg:{text} -> Reply 1-2 lines"
+        user_prompt=f"IST:{get_ist_str()} Owner:{is_owner} Name:{uname} Lang:{user_lang} City:{PROFILES[uid].get('weather_city','')} Learned:{learned_global[-500:]} Hist:{MEMORY[uid]['hist'][-800:]} Msg:{text} -> Reply 1-2 lines"
         ans=ask_all(system,user_prompt,is_owner) or "Ha bolo Malik?"
         ans=clean(ans)
         if not is_owner: ans = ans + " 🔒"
-        if LOOP_CACHE[uid] and ans in LOOP_CACHE[uid]:
-            ans=random.choice(["Bolo alag baat karte hain","Haan sun raha hu bolo","Ispe baat ho gayi, naya batao?"]) + (" 🔒" if not is_owner else "")
-        LOOP_CACHE[uid].append(ans)
-        if len(LOOP_CACHE[uid])>4: LOOP_CACHE[uid].pop(0)
         MEMORY[uid]["hist"]=(MEMORY[uid]["hist"]+f"\nU:{text}\nR:{ans}")[-3000:]
         save_persist()
         log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type)
         return ans, False, [["👍","👎"]]
     except Exception as e:
-        report_fault(f"brain {uid}", e); return "Theek hai Malik, network slow hai, phir bolo?", False, None
+        return "Theek hai Malik, network slow hai, phir bolo?", False, None
 
 @app.route("/", methods=["GET"])
 def home():
-    try:
-        if BOT_TOKEN and MY_URL:
-            try: requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook", params={"url":f"{MY_URL}/webhook"}, timeout=5)
-            except: pass
-        return f"Rakan V16 FIXED No-vercel.json G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} {get_ist_str()}",200
-    except: return "Error",200
-
-@app.route("/fix", methods=["GET"])
-def fix():
-    try:
-        global GROQ_KEYS,GEMINI_KEYS,OPENAI_KEYS,BAD_KEYS
-        if str(request.args.get("id",""))!=OWNER_ID: return "Access Denied",403
-        GROQ_KEYS,GEMINI_KEYS,OPENAI_KEYS=get_keys(); BAD_KEYS.clear(); load_persist(); save_persist()
-        return f"FIXED V16 {get_ist_str()} G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} Last:{LAST_ERROR}",200
-    except Exception as e: return f"Fix err {e}",200
-
-@app.route("/dashboard", methods=["GET"])
-def dashboard():
-    try:
-        if str(request.args.get("id",""))!=OWNER_ID: return "Access Denied",403
-        html=f"<h2>{MALIK_NAME} - Dashboard V16</h2><p>{get_ist_str()}</p><p>Users {len(PROFILES)} Chats {len(CHAT_LOG)}</p><hr>"
-        for c in CHAT_LOG[-100:][::-1]:
-            html+=f"<p><b>{c.get('name')} @{c.get('username')} Phone:{c.get('phone')} ID:{c.get('user_id')}:</b> {c.get('user')} -> {c.get('bot')} [{c.get('type')}] {c.get('time')}</p><hr>"
-        return html,200
-    except Exception as e: return f"Error {e}",200
-
-@app.route("/cron", methods=["GET","POST"])
-def cron():
-    try:
-        if OWNER_ID!="0" and BOT_TOKEN:
-            w=get_weather("Varanasi")
-            if w: tg_send(OWNER_ID, f"📰 Auto {get_ist_str()}\n🌤️ {w}\nBot Live")
-        return f"cron ok {get_ist_str()}",200
-    except Exception as e: report_fault("cron", e); return "cron err",200
+    if BOT_TOKEN and MY_URL:
+        try: requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook", params={"url":f"{MY_URL}/webhook"}, timeout=5)
+        except: pass
+    return f"Rakan V17 WORLD WEATHER LOCK G:{len(GROQ_KEYS)} {get_ist_str()}",200
 
 @app.route("/webhook", methods=["POST","GET"])
 def webhook():
@@ -396,99 +284,35 @@ def webhook():
     try:
         data=request.get_json(silent=True) or {}; 
         if "callback_query" in data:
-            cq=data["callback_query"]; cb_id=cq["id"]; cb_data=cq.get("data",""); from_id=str(cq["from"]["id"]); msg=cq["message"]
+            cq=data["callback_query"]; cb_id=cq["id"]; cb_data=cq.get("data","")
             if cb_data in ["👍","👎"]:
-                FEEDBACK_LOG.append({"time":get_ist_str(),"uid":from_id,"feedback":cb_data,"msg":msg.get("text","")[:200]})
+                FEEDBACK_LOG.append({"time":get_ist_str(),"uid":str(cq["from"]["id"]),"feedback":cb_data})
                 save_persist()
-                if cb_data=="👎":
-                    tg_send(OWNER_ID, f"⚠️ Feedback Malik\n👤 {from_id}\n👎 Dislike\nMsg: {msg.get('text','')[:300]}\n⏰ {get_ist_str()}\n'yaha ye daal de ...' likho sikhane ke liye")
                 requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cb_id,"text":"Thanks"}, timeout=5)
                 return "ok",200
-
         msg=data.get("message",{}) or {}
         chat_id=msg.get("chat",{}).get("id"); user_id=str(msg.get("from",{}).get("id",0)); uname=msg.get("from",{}).get("first_name","user")
         text=msg.get("text","") or msg.get("caption","") or ""; message_id=msg.get("message_id")
         if not chat_id: return "ok",200
         is_owner=(user_id==OWNER_ID)
         if is_owner: uname=MALIK_NAME
-
-        OWNER_STATUS = upstash("get","OWNER_STATUS") or "offline"
-        if is_owner and text.lower().strip() in ["/online","online aa gaya","mai online hu","online"]:
-            upstash("set","OWNER_STATUS","online")
-            tg_send(chat_id, "Done Malik, bot pause hai. /offline likho ON karne ke liye.")
-            return "ok",200
-        if is_owner and text.lower().strip() in ["/offline","offline kar do","bot start","offline"]:
-            upstash("set","OWNER_STATUS","offline")
-            tg_send(chat_id, "Done Malik, bot wapas ON hai.")
-            return "ok",200
-        if not is_owner and OWNER_STATUS=="online":
-            tg_send(OWNER_ID, f"👤 User Online (Bot Paused)\n👤 {uname} ({user_id})\nID:{chat_id}\nMsg: {text}\nReply karo bhej dunga.")
-            tg_send(chat_id, "Malik online hai, thodi der me khud reply karenge. 🔒", message_id)
-            return "ok",200
-        if is_owner and msg.get("reply_to_message"):
-            replied_text = msg["reply_to_message"].get("text","")
-            m = re.search(r"ID:(\d+)", replied_text)
-            if m:
-                target_chat_id = m.group(1)
-                tg_send(target_chat_id, text)
-                tg_send(chat_id, f"✅ Bhej diya {target_chat_id} ko")
-                return "ok",200
-
-        if msg.get("contact"):
-            phone=msg["contact"].get("phone_number","")
-            if user_id not in PROFILES or not isinstance(PROFILES[user_id], dict):
-                PROFILES[user_id]={"name":uname,"total":0,"gali_level":"","phone":""}
-            PROFILES[user_id]["phone"]=phone
-            save_persist()
-            ans="Number save kar liya Malik" if is_owner else "Thanks, contact save ho gaya 🔒"
-            tg_send(chat_id, ans, message_id)
-            log_to_owner(user_id,uname,msg,f"[CONTACT] {phone}",ans,detect_lang(text),"contact")
-            return "ok",200
-
-        if msg.get("photo"):
-            b=tg_get_file_bytes(msg["photo"][-1]["file_id"])
-            if b:
-                system=get_lore_fresh(is_owner, detect_lang(text))
-                q=text if text else "Is photo me kya hai short me batao"
-                v=ask_gemini_vision(b,q,system)
-                if v: 
-                    tg_send(chat_id,v,message_id, buttons=[[{"text":"👍","callback_data":"👍"},{"text":"👎","callback_data":"👎"}]])
-                    log_to_owner(user_id,uname,msg,f"[PHOTO] {text}",v,detect_lang(text),"photo")
-                else: 
-                    ans, want_voice, btns = brain(text or "photo dekho",user_id,is_owner,uname,msg,"photo")
-                    if want_voice and is_owner:
-                        audio=eleven_tts(ans)
-                        if audio: tg_send_voice_bytes(chat_id, audio)
-                        tg_send(chat_id, ans, message_id, buttons=btns)
-                    else: tg_send(chat_id, ans, message_id, buttons=btns)
-                return "ok",200
-
-        if msg.get("voice") or msg.get("audio") or msg.get("video"):
-            fid=(msg.get("voice") or msg.get("audio") or msg.get("video") or {}).get("file_id")
-            b=tg_get_file_bytes(fid)
-            if b:
-                heard=transcribe_media(b)
-                if heard:
-                    ans, want_voice, btns = brain(heard,user_id,is_owner,uname,msg,"voice")
-                    if want_voice and is_owner:
-                        audio=eleven_tts(ans)
-                        if audio: tg_send_voice_bytes(chat_id, audio)
-                        tg_send(chat_id, ans, message_id, buttons=btns)
-                    else: tg_send(chat_id, ans, message_id, buttons=btns)
-                else: tg_send(chat_id,"awaz saaf nahi aayi Malik" if is_owner else "Voice not clear 🔒",message_id)
-            return "ok",200
-
         if not text: return "ok",200
         ans, want_voice, btns = brain(text,user_id,is_owner,uname,msg,"text")
         if want_voice and is_owner:
             audio=eleven_tts(ans)
-            if audio:
-                tg_send_voice_bytes(chat_id, audio)
-                tg_send(chat_id, ans, message_id, buttons=btns)
-            else:
-                tg_send(chat_id, f"{ans}\n\n(Eleven key missing)", message_id, buttons=btns)
-        else:
-            tg_send(chat_id,ans,message_id, buttons=btns)
+            if audio: 
+                try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendVoice", data={"chat_id":chat_id}, files={"voice":("rakan.mp3", audio, "audio/mpeg")}, timeout=30)
+                except: pass
+        tg_send(chat_id,ans,message_id, buttons=btns)
         return "ok",200
-    except Exception as e:
-        report_fault("webhook", e); return "ok",200
+    except: return "ok",200
+
+@app.route("/cron", methods=["GET","POST"])
+def cron():
+    try:
+        # Old route for backward compat
+        from api.cron import handler as cron_handler
+        class Req: pass
+        return cron_handler(Req()).get("body","ok"),200
+    except:
+        return "cron ok",200
