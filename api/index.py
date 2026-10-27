@@ -4,7 +4,6 @@ import google.generativeai as genai
 
 app = Flask(__name__)
 
-# ENV - Production only tick wale
 BOT_TOKEN = os.environ.get("BOT_TOKEN","") or os.environ.get("TELEGRAM_BOT_TOKEN","")
 OWNER_ID = str(os.environ.get("OWNER_ID","0")).strip()
 MY_URL = os.environ.get("MY_URL","").rstrip("/") or "https://my-telegram-bot-lime.vercel.app"
@@ -22,24 +21,28 @@ MALIK_NAME="MD Saif Ahmad"
 QUEEN_USERNAME="pearly_paradise15"
 QUEEN_NUMBERS=["8090862169","8187940221"]
 
-MONARCH_LORE = f"You are Rakan - King of Beasts, Royal Knight of Shadow King {MALIK_NAME}. Made by Malik on Vercel. NOT Groq/Gemini. Islam A-Z Quran Hadith Fiqh Seerah, all religions, world knowledge till Oct 2026, live search enabled. Extra:{LORE_ENV}"
+MONARCH_LORE = f"You are Rakan - King of Beasts, Royal Knight of Shadow King {MALIK_NAME}. Made by Malik on Vercel. NOT Groq/Gemini. Islam A-Z Quran Hadith Fiqh Seerah, all religions, world knowledge till Oct 2026, live search. Extra:{LORE_ENV}"
 
 MEMORY={}; PROFILES={}; CHAT_LOG=[]; BAD_KEYS={}; OWNER_PREF={}; LAST_BOT_MSG={}; LAST_MSG_ID={}; LAST_CITY={}
 
+# V30 FIX - AQ SYSTEM WAPAS + GM FIX
 def get_keys():
     g,gm=[],[]
     for v in os.environ.values():
         if not v: continue
-        for p in str(v).replace("\n",",").split(","):
+        for p in str(v).replace("\n",",").replace(";",",").split(","):
             p=p.strip().strip('"').strip("'").strip()
-            if len(p)<15: continue
-            if p.startswith("gsk_") and p not in g: g.append(p)
-            elif p.startswith("AIza") and len(p)>30 and p not in gm: gm.append(p)
+            if len(p)<10: continue
+            # GROQ
+            if p.startswith("gsk_") and p not in g: 
+                g.append(p)
+            # GEMINI - FIXED: AIza + aq + AQ all
+            elif (p.startswith("AIza") or p.lower().startswith("aq")) and len(p)>20 and p not in gm:
+                gm.append(p)
     return list(dict.fromkeys(g)), list(dict.fromkeys(gm))
 GROQ_KEYS,GEMINI_KEYS=get_keys()
 
-def get_ist_str():
-    return (datetime.datetime.utcnow()+datetime.timedelta(hours=5,minutes=30)).strftime("%d %b %Y, %I:%M %p IST")
+def get_ist_str(): return (datetime.datetime.utcnow()+datetime.timedelta(hours=5,minutes=30)).strftime("%d %b %Y, %I:%M %p IST")
 
 def tg_send(cid,txt,reply_id=None, buttons=None):
     try:
@@ -50,11 +53,9 @@ def tg_send(cid,txt,reply_id=None, buttons=None):
             for row in buttons:
                 fixed.append([{"text": str(b), "callback_data": str(b)} if isinstance(b,str) else b for b in row])
             p["reply_markup"]=json.dumps({"inline_keyboard": fixed})
-        r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=p, timeout=12)
-        js=r.json()
-        if js.get("ok"):
-            LAST_MSG_ID[str(cid)]=js["result"]["message_id"]
-        return js.get("ok",False)
+        r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=p, timeout=12).json()
+        if r.get("ok"): LAST_MSG_ID[str(cid)]=r["result"]["message_id"]
+        return r.get("ok",False)
     except: return False
 
 def tg_real_forward(from_chat, msg_id, to_chat):
@@ -77,7 +78,7 @@ def tg_send_voice(cid, text, gender="female"):
         if rr.status_code==200:
             requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendVoice", data={"chat_id":cid}, files={'voice':('v.mp3',rr.content,'audio/mpeg')}, timeout=20)
             return True
-    except Exception as e: print(f"VOICE {e}")
+    except: pass
     return False
 
 def live_search(q):
@@ -85,14 +86,10 @@ def live_search(q):
         if TAVILY_KEY and len(q)>2:
             r=requests.post("https://api.tavily.com/search", json={"api_key":TAVILY_KEY,"query":q,"max_results":2,"include_answer":True}, timeout=8)
             if r.status_code==200:
-                j=r.json()
-                ans=j.get("answer","")
-                res=" | ".join([x.get("content","")[:250] for x in j.get("results",[])])
+                j=r.json(); ans=j.get("answer",""); res=" | ".join([x.get("content","")[:250] for x in j.get("results",[])])
                 return (ans+" "+res)[:700]
-        # fallback
         r=requests.get(f"https://api.duckduckgo.com/?q={requests.utils.quote(q)}&format=json", timeout=6)
-        if r.status_code==200:
-            return r.json().get("AbstractText","")[:400]
+        if r.status_code==200: return r.json().get("AbstractText","")[:400]
     except: pass
     return ""
 
@@ -104,8 +101,7 @@ def transcribe_voice(file_id):
         for k in GROQ_KEYS:
             try:
                 rr=requests.post("https://api.groq.com/openai/v1/audio/transcriptions", headers={"Authorization": f"Bearer {k}"}, files={'file':('a.ogg',audio,'audio/ogg')}, data={'model':'whisper-large-v3','language':'hi'}, timeout=20)
-                if rr.status_code==200:
-                    return rr.json().get("text","")
+                if rr.status_code==200: return rr.json().get("text","")
             except: continue
     except: pass
     return ""
@@ -117,8 +113,7 @@ def upstash(cmd,key,val=None):
         if cmd=="get":
             r=requests.get(f"{UPSTASH_URL}/get/{key}", headers=h, timeout=5)
             if r.status_code==200:
-                d=r.json().get("result")
-                return json.loads(d) if d else None
+                d=r.json().get("result"); return json.loads(d) if d else None
         else:
             requests.post(f"{UPSTASH_URL}", headers=h, json=["SET",key,json.dumps(val)], timeout=5)
     except: pass
@@ -136,12 +131,10 @@ load_persist()
 
 def is_bad(k): return k in BAD_KEYS and time.time()-BAD_KEYS[k]<900
 def mark_bad(k): BAD_KEYS[k]=time.time()
-
 def detect_lang(t):
     if re.search(r'[\u0900-\u097F]', t): return "hindi"
     eng=len(re.findall(r'[a-zA-Z]', t))
     return "english" if eng>len(t)*0.6 else "hinglish"
-
 def clean(t,apology=False):
     if not apology: t=t.replace("🙏","")
     t=re.sub(r"I am (Groq|Gemini|OpenAI|Meta).*","I am Rakan, made by Malik",t,flags=re.I)
@@ -164,7 +157,7 @@ def ask_gemini(sys,user):
         try:
             genai.configure(api_key=k)
             model=genai.GenerativeModel("gemini-1.5-flash", system_instruction=sys)
-            res=model.generate_content(user, safety_settings=[])
+            res=model.generate_content(user)
             if res and res.text: return res.text
         except Exception as e:
             if "429" in str(e) or "quota" in str(e).lower(): mark_bad(k)
@@ -181,11 +174,11 @@ def get_weather(city):
         r=requests.get(f"https://wttr.in/{city}?format=%C+%t", timeout=6)
         if r.status_code==200 and r.text: return f"{city}: {r.text}"
     except: pass
-    return f"{city} ka live data nahi mila, city sahi likho"
+    return f"{city} ka live data nahi mila"
 
 def brain(text,uid,is_owner,is_queen,uname,is_voice=False):
     global MEMORY,PROFILES,LAST_BOT_MSG,CHAT_LOG,LAST_CITY
-    uid=str(uid); cid=str(uid)
+    uid=str(uid)
     if uid not in MEMORY: MEMORY[uid]={"hist":""}
     if uid not in PROFILES: PROFILES[uid]={"total":0,"style":"","city":""}
     PROFILES[uid]["total"]+=1
@@ -196,19 +189,27 @@ def brain(text,uid,is_owner,is_queen,uname,is_voice=False):
 
     if len(text.split())<=10 and len(text)>3: PROFILES[uid]["style"]=text[:120]
 
+    # V30 FIX - ADVANCE ORV COMMAND
+    if low.startswith("/orv") and is_owner:
+        orv = upstash("get","RAKAN_LIKES") or {"like":0,"dislike":0,"logs":[]}
+        ans = f"📊 ORV ADVANCE {get_ist_str()}\n👍 Like: {orv.get('like',0)} | 👎 Dislike: {orv.get('dislike',0)}\nG:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}\n\nLast 5:\n"
+        for l in orv.get('logs',[])[-5:]:
+            ans += f"{l['type']} {l['uid'][:6]}: {l['msg'][:35]}\n"
+        LAST_BOT_MSG[uid]=ans; return ans, False
+
     if total%20==0 and is_owner:
-        tg_send(OWNER_ID, f"📊 V29 Report {get_ist_str()}\nUser {uname} total {total}\nLang {user_lang}\nStyle {PROFILES[uid]['style']}\nSahi: short, lang match\nCheck: extra info, 🙏 misuse")
+        tg_send(OWNER_ID, f"📊 20 Report {get_ist_str()}\nUser {uname} total {total}\nLang {user_lang}\nStyle {PROFILES[uid]['style']}")
 
     if is_owner and any(k in low for k in ["baat suno","voice me bolo","bol ke sunao","awaz me bolo","voice bhejo"]):
         if OWNER_PREF.get("voice_gender")=="ask":
             return "Malik puch raha hu - Female ya Male voice me sunau? __ASKVOICE__", False
         gender=OWNER_PREF.get("voice_gender","female")
-        last=LAST_BOT_MSG.get(uid,"Ji Malik bolo, kya hukum?")
+        last=LAST_BOT_MSG.get(uid,"Ji Malik bolo")
         return f"__VOICE__{gender}__{last}", True
 
     if any(k in low for k in ["ab se yahi","lock kar de","yahi ka batana","set location"]):
-        city=re.sub(r'ab se yahi|lock kar de|yahi ka batana|set location|ka mausam|weather','',low, flags=re.I).strip()
-        city=city.title().split()[0] if city else "Varanasi"
+        city=re.sub(r'ab se yahi|lock kar de|yahi ka batana|set location|ka mausam|weather','',low, flags=re.I).strip().title().split()
+        city=city[0] if city else "Varanasi"
         if len(city)<2: city="Varanasi"
         PROFILES[uid]["city"]=city; LAST_CITY[uid]=city; save_persist()
         ans=f"Done Malik 📍 Lock: {city}"; LAST_BOT_MSG[uid]=ans; return ans, False
@@ -219,24 +220,19 @@ def brain(text,uid,is_owner,is_queen,uname,is_voice=False):
 
     if "mausam" in low or "weather" in low or "temperature" in low:
         city=PROFILES[uid].get("city") or LAST_CITY.get(uid) or "Varanasi"
-        if "ka mausam" in low or "ki weather" in low:
-            m=re.search(r'([a-zA-Z\u0900-\u097F]+)\s+ka mausam', low)
-            if m: city=m.group(1)
         LAST_CITY[uid]=city
         ans=f"🌤️ {get_weather(city)} | {get_ist_str()}"; LAST_BOT_MSG[uid]=ans; return ans, False
 
     if low.startswith("/start"):
-        if is_owner: ans=f"Welcome Shadow King 👑 Malik {MALIK_NAME}\nV29 G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} Voice:{OWNER_PREF.get('voice_gender')} TAVILY:{'ON' if TAVILY_KEY else 'OFF'} WEATHER:{'ON' if OPENWEATHER_KEY else 'OFF'} {get_ist_str()}"
-        elif is_queen: ans=f"Hey Theodore 💜 Malik busy hai jaan, bolo mai pahuncha dungi, sab badhiya? 😊"
+        if is_owner: ans=f"Welcome Shadow King 👑 Malik {MALIK_NAME}\nV30 G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} Voice:{OWNER_PREF.get('voice_gender')} TAVILY:{'ON' if TAVILY_KEY else 'OFF'} WEATHER:{'ON' if OPENWEATHER_KEY else 'OFF'} {get_ist_str()}"
+        elif is_queen: ans=f"Hey Theodore 💜 Malik busy hai, bolo mai pahuncha dungi, sab badhiya? 😊"
         else:
-            if user_lang=="english": ans=f"Hey {uname} how are you? 😊"
-            else: ans=f"Hey {uname} or bhai kya haal sab badhiya? bolo? 🔒"
+            ans=f"Hey {uname} or bhai kya haal sab badhiya? bolo? 🔒" if user_lang!="english" else f"Hey {uname} how are you? 🔒"
         LAST_BOT_MSG[uid]=ans; return ans, False
 
     is_spam = any(w in low for w in ["free money","lottery","xxx","sex chat","join telegram"])
     is_abuse = any(w in low for w in ["madarchod","bhenchod","chutiya","gandu","bsdk","randi"])
-    if is_spam and not is_owner and not is_queen:
-        return "Archived", False
+    if is_spam and not is_owner and not is_queen: return "Archived", False
     if is_abuse and not is_owner:
         ans="Oye tameez se baat kar, gali dega to double sunega samjha?"; LAST_BOT_MSG[uid]=ans; return ans, False
 
@@ -245,14 +241,14 @@ def brain(text,uid,is_owner,is_queen,uname,is_voice=False):
         search_ctx=live_search(text)
 
     if is_owner:
-        sys=f"{MONARCH_LORE} OWNER Malik respect Urdu Hinglish mix. IST {get_ist_str()} City {PROFILES[uid].get('city')} Search {search_ctx} Rule: 1-2 lines short, no extra gyan, 🙏 only apology, religion only if Malik asks, full world knowledge."
+        sys=f"{MONARCH_LORE} OWNER Urdu Hinglish fix respectful. IST {get_ist_str()} City {PROFILES[uid].get('city')} Search {search_ctx} Rule: 1-2 lines short, 🙏 only apology, no religion unless Malik asks, full world knowledge."
     elif is_queen:
-        sys=f"{MONARCH_LORE} Queen Theodore {QUEEN_USERNAME} Malik ki queen, pyar se Urdu Hinglish. Malik offline/busy hai bolo pahuncha dungi. Search {search_ctx} Short 1 line."
+        sys=f"{MONARCH_LORE} Queen Theodore {QUEEN_USERNAME} - Malik ki queen, pyar se Urdu Hinglish. Malik offline/busy bolo pahuncha dungi. Search {search_ctx} Short."
     else:
-        sys=f"{MONARCH_LORE} User lang MUST {user_lang} reply same lang. Style mimic {PROFILES[uid]['style']}. Search {search_ctx} Rule: Jitna pucha utna bolo, extra mat bolo, 🙏 only apology, short 1-2 lines."
+        sys=f"{MONARCH_LORE} User lang {user_lang} MUST same lang reply. Mimic {PROFILES[uid]['style']}. Search {search_ctx} Rule: Only as much asked, no extra, short 1-2 lines, 🙏 only apology."
 
-    prompt=f"History {MEMORY[uid]['hist'][-600:]} Current {text} Voice? {is_voice}"
-    raw=ask_groq(sys,prompt) or ask_gemini(sys,prompt) or "Thodi der me bolo Malik, G key check kar raha hu"
+    prompt=f"Hist {MEMORY[uid]['hist'][-600:]} Msg {text} Voice {is_voice}"
+    raw=ask_groq(sys,prompt) or ask_gemini(sys,prompt) or f"Thodi der me bolo G:{len(GROQ_KEYS)}"
     ans=clean(raw, is_apology)
     MEMORY[uid]["hist"]=(MEMORY[uid]["hist"]+f"\nU:{text}\nR:{ans}")[-1500:]
     CHAT_LOG.append({"uid":uid,"user":text[:200],"bot":ans[:200],"time":get_ist_str()})
@@ -260,15 +256,13 @@ def brain(text,uid,is_owner,is_queen,uname,is_voice=False):
     if not is_owner and not is_queen: ans+=" 🔒"
     return ans, is_voice and is_owner
 
-def make_btns():
-    return [[{"text":"📋","callback_data":"COPY"},{"text":"↗️","callback_data":"FWD"},{"text":"👍","callback_data":"LIKE"},{"text":"👎","callback_data":"DISLIKE"}]]
+def make_btns(): return [[{"text":"📋","callback_data":"COPY"},{"text":"↗️","callback_data":"FWD"},{"text":"👍","callback_data":"LIKE"},{"text":"👎","callback_data":"DISLIKE"}]]
 
 @app.route("/", methods=["GET"])
-def home(): return f"Rakan V29 REAL G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} TAVILY:{'OK' if TAVILY_KEY else 'MISS'} WEATHER:{'OK' if OPENWEATHER_KEY else 'MISS'} {get_ist_str()} | <a href='/debug'>DEBUG</a>",200
+def home(): return f"Rakan V30 REAL G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} TAVILY:{'OK' if TAVILY_KEY else 'MISS'} WEATHER:{'OK' if OPENWEATHER_KEY else 'MISS'} {get_ist_str()} | <a href='/debug'>DEBUG</a>",200
 
 @app.route("/debug", methods=["GET"])
-def debug():
-    return f"BOT {'OK' if BOT_TOKEN else 'MISS'} OWNER {OWNER_ID} G {len(GROQ_KEYS)} GM {len(GEMINI_KEYS)} ELEVEN {'OK' if ELEVEN_API_KEY else 'MISS'} TAVILY {'OK' if TAVILY_KEY else 'MISS'} WEATHER {'OK' if OPENWEATHER_KEY else 'MISS'} LAST {LAST_MSG_ID} PREF {OWNER_PREF} IST {get_ist_str()}",200
+def debug(): return f"BOT {'OK' if BOT_TOKEN else 'MISS'} OWNER {OWNER_ID} G {len(GROQ_KEYS)} GM {len(GEMINI_KEYS)} ELEVEN {'OK' if ELEVEN_API_KEY else 'MISS'} TAVILY {'OK' if TAVILY_KEY else 'MISS'} WEATHER {'OK' if OPENWEATHER_KEY else 'MISS'} LAST {LAST_MSG_ID} PREF {OWNER_PREF} IST {get_ist_str()}",200
 
 @app.route("/webhook", methods=["POST","GET"])
 @app.route("/api/index", methods=["POST","GET"])
@@ -279,8 +273,7 @@ def webhook():
         data=request.get_json(silent=True) or {}
         if "callback_query" in data:
             cq=data["callback_query"]; cid=str(cq["message"]["chat"]["id"]); uid=str(cq["from"]["id"])
-            cdata=cq["data"]
-            last_id=LAST_MSG_ID.get(cid) or cq["message"]["message_id"]
+            cdata=cq["data"]; last_id=LAST_MSG_ID.get(cid) or cq["message"]["message_id"]
             try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]}, timeout=5)
             except: pass
 
@@ -288,15 +281,26 @@ def webhook():
             if cdata=="VOICE_MALE": OWNER_PREF["voice_gender"]="male"; save_persist(); tg_send(cid,"Male voice lock 👨"); return "ok",200
             if cdata=="COPY":
                 ok=tg_real_copy(cid, last_id, cid)
-                if not ok: tg_send(cid, f"Copy fail, yahi raha: {LAST_BOT_MSG.get(uid,'')[:500]}")
+                if not ok: tg_send(cid, f"Copy fail: {LAST_BOT_MSG.get(uid,'')[:500]}")
                 return "ok",200
             if cdata=="FWD":
                 ok=tg_real_forward(cid, last_id, cid)
-                if not ok: tg_send(cid, "Forward fail, try again")
+                if not ok: tg_send(cid, "Forward fail")
                 return "ok",200
+            # V30 FIX - ADVANCE ORV
             if cdata in ["LIKE","DISLIKE"]:
-                tg_send(OWNER_ID, f"{cdata} from {uid}: {LAST_BOT_MSG.get(uid,'')[:300]}")
-                tg_send(cid, f"Thanks {cdata} noted Malik"); return "ok",200
+                orv = upstash("get","RAKAN_LIKES") or {"like":0,"dislike":0,"logs":[]}
+                if cdata=="LIKE": orv["like"]=orv.get("like",0)+1
+                else: orv["dislike"]=orv.get("dislike",0)+1
+                orv.setdefault("logs",[]).append({"type":cdata,"uid":uid,"msg":LAST_BOT_MSG.get(uid,"")[:100],"time":get_ist_str()})
+                orv["logs"]=orv["logs"][-100:]
+                upstash("set","RAKAN_LIKES",orv)
+                tg_send(OWNER_ID, f"🔔 ORV {cdata}\nFrom {uid}\nMsg: {LAST_BOT_MSG.get(uid,'')[:200]}\nTotal 👍 {orv['like']} 👎 {orv['dislike']} | {get_ist_str()}")
+                if cdata=="DISLIKE":
+                    tg_send(cid, "Batao kya galat laga? Mai OWNER tak pahuncha dunga 🙏")
+                else:
+                    tg_send(cid, "Shukriya ❤️ noted")
+                return "ok",200
             return "ok",200
 
         msg=data.get("message",{}) or {}; chat_id=msg.get("chat",{}).get("id"); user_id=str(msg.get("from",{}).get("id",0)); uname=msg.get("from",{}).get("first_name","user"); username=msg.get("from",{}).get("username","") or ""
@@ -306,7 +310,6 @@ def webhook():
             fid=msg.get("voice",{}).get("file_id") or msg.get("audio",{}).get("file_id")
             text=transcribe_voice(fid) or "[Voice]"
         if not chat_id: return "ok",200
-
         is_owner=(user_id==OWNER_ID)
         is_queen=(username.lower()==QUEEN_USERNAME.lower() or any(n in username.lower() for n in ["pearly"]) or any(n in str(msg.get("contact",{}).get("phone_number","")) for n in QUEEN_NUMBERS))
         if is_owner: uname=MALIK_NAME
@@ -321,11 +324,9 @@ def webhook():
             tg_send(chat_id, vtext, mid, make_btns())
             if is_owner: tg_send_voice(chat_id, vtext, gender)
             return "ok",200
-
         if ans=="Archived":
             tg_send(OWNER_ID, f"🚫 Archived spam from {uname} ({user_id}): {text[:200]}")
             return "ok",200
-
         tg_send(chat_id, ans, mid, make_btns())
         return "ok",200
     except Exception as e:
