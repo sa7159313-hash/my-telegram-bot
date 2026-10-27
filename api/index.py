@@ -27,7 +27,19 @@ def tg_send(cid,txt,reply_id=None, buttons=None):
     try:
         p={"chat_id":cid,"text":txt[:3900]}
         if reply_id: p["reply_to_message_id"]=reply_id
-        if buttons: p["reply_markup"]=json.dumps({"inline_keyboard": buttons})
+        if buttons:
+            fixed=[]
+            for row in buttons:
+                new_row=[]
+                for b in row:
+                    if isinstance(b, str):
+                        new_row.append({"text": b, "callback_data": b})
+                    elif isinstance(b, dict):
+                        new_row.append(b)
+                    else:
+                        new_row.append({"text": str(b), "callback_data": str(b)})
+                fixed.append(new_row)
+            p["reply_markup"]=json.dumps({"inline_keyboard": fixed})
         r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=p, timeout=12)
         return r.status_code, r.text[:400]
     except Exception as e:
@@ -86,7 +98,7 @@ def save_persist():
     except: pass
 load_persist()
 
-# ============ FINAL FIXED KEYS - NO MORE GM 18 ============
+# ============ FIXED KEYS - GM 18 -> GM 1 ============
 def get_keys():
     g,gm=[],[]
     for v in os.environ.values():
@@ -199,7 +211,7 @@ def brain(text,uid,is_owner,uname, user_obj, media_type="text"):
     save_persist(); log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type)
     return ans, False, [["👍","👎"]]
 
-# ============ ROUTES - FIXED /debug ============
+# ============ ROUTES ============
 def debug_html():
     out=[]
     out.append(f"<b>BOT_TOKEN:</b> {'OK len='+str(len(BOT_TOKEN)) if BOT_TOKEN else 'MISSING ❌'}")
@@ -232,7 +244,7 @@ def home():
     if BOT_TOKEN and MY_URL:
         try: requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook", params={"url":f"{MY_URL}/webhook"}, timeout=5)
         except: pass
-    return f"Rakan V23 FULL G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} {get_ist_str()} | <a href='/debug'>DEBUG</a>",200
+    return f"Rakan V24 FULL G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} {get_ist_str()} | <a href='/debug'>DEBUG</a>",200
 
 @app.route("/debug", methods=["GET"])
 @app.route("/api/debug", methods=["GET"])
