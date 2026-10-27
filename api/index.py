@@ -7,10 +7,10 @@ app = Flask(__name__)
 BOT_TOKEN = os.environ.get("BOT_TOKEN","") or os.environ.get("TELEGRAM_BOT_TOKEN","")
 OWNER_ID = str(os.environ.get("OWNER_ID","0") or "0")
 MY_URL = os.environ.get("MY_URL","").rstrip("/") or "https://my-telegram-bot-lime.vercel.app"
-LORE_ENV = os.environ.get("THE_BEAST_KING_MONARCH_AKAAN_LORE","")
+LORE_ENV = os.environ.get("THE_BEAST_KING_MONARCH_AKAAN_LORE","") or os.environ.get("THE_HEART_KING_MONARCH_AKAAN_LORE","")
 UPSTASH_URL = os.environ.get("UPSTASH_REDIS_REST_URL","")
 UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN","")
-ELEVEN_API_KEY = os.environ.get("ELEVENLABS_API_KEY","")
+ELEVEN_API_KEY = os.environ.get("ELEVENLABS_API_KEY","") or os.environ.get("ELEVEN_API_KEY","")
 MALE_VOICE_ID = os.environ.get("ELEVEN_MALE_VOICE","pNInz6obpgDQGcFmaJgB") or "pNInz6obpgDQGcFmaJgB"
 FEMALE_VOICE_ID = os.environ.get("ELEVEN_FEMALE_VOICE","EXAVITQu4vr4xnSDxMaL") or "EXAVITQu4vr4xnSDxMaL"
 OPENWEATHER_KEY = os.environ.get("OPENWEATHER_API_KEY","")
@@ -50,7 +50,7 @@ def get_weather(city="Varanasi"):
     try:
         if OPENWEATHER_KEY:
             r=requests.get(f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={OPENWEATHER_KEY}&units=metric", timeout=5)
-            if r.status_code==200: d=r.json(); return f"{city}: {d['weather'][0]['description']}, {d['main']['temp']}°C, Humidity {d['main']['humidity']}%"
+            if r.status_code==200: d=r.json(); return f"{city}: {d['weather'][0]['description']}, {d['main']['temp']}°C"
         r=requests.get(f"https://wttr.in/{city}?format=3", timeout=5)
         return r.text.strip() if r.status_code==200 else None
     except: return None
@@ -76,8 +76,7 @@ def full_system_audit():
     except: faults.append({"layer":"MEMORY JSON","status":"FAULT","line":"MEMORY 140","current":"Corrupt","fix":"Clear","fix_code":"'ha fix karo' bolo"})
     g,gm,go=get_keys()
     if len([k for k in g if k not in BAD_KEYS])==0 and len(g)>0: faults.append({"layer":"GROQ KEYS","status":"FAULT","line":"get_keys() 110","current":f"0/{len(g)} BAD","fix":"BAD clear","fix_code":"'ha fix karo' bolo BAD clear\nAgar 0 to GROQ_API_KEY=gsk_... daalo"})
-    if not ELEVEN_API_KEY: faults.append({"layer":"ELEVENLABS","status":"WARN","line":"ENV","current":"Missing","fix":"Key daalo","fix_code":"ELEVENLABS_API_KEY=... daalo, sirf Malik voice fail hoga, dusro pe asar nahi"})
-    if not OPENWEATHER_KEY: faults.append({"layer":"OPENWEATHER","status":"WARN","line":"ENV","current":"Missing using wttr.in","fix":"Key daalo for better","fix_code":"OPENWEATHER_API_KEY=... daalo, nahi to wttr.in chalega"})
+    if not ELEVEN_API_KEY: faults.append({"layer":"ELEVENLABS","status":"WARN","line":"ENV","current":"Missing - Only Malik voice fail","fix":"Key daalo","fix_code":"ELEVENLABS_API_KEY=... daalo"})
     if len([f for f in faults if f["status"]=="FAULT"])==0: faults.append({"layer":"ALL","status":"OK","line":"All","info":"100% fit","fix":"OK","fix_code":"Same"})
     return faults
 
@@ -110,7 +109,6 @@ def save_persist():
         if not UPSTASH_URL: return
         upstash("set","RAKAN_MEM",MEMORY); upstash("set","RAKAN_ABUSE",ABUSE)
         upstash("set","RAKAN_PROFILES",PROFILES); upstash("set","RAKAN_LOGS",CHAT_LOG[-500:]); upstash("set","RAKAN_PREF",OWNER_PREF); upstash("set","RAKAN_FEEDBACK",FEEDBACK_LOG[-100:])
-        upstash("set","OWNER_STATUS", upstash("get","OWNER_STATUS") or "offline")
     except: pass
 load_persist()
 
@@ -221,8 +219,7 @@ def log_to_owner(uid, uname, user_obj, user_text, bot_reply, lang, media_type="t
     global CHAT_LOG
     try:
         chat_id=user_obj.get("chat",{}).get("id"); user_id=user_obj.get("from",{}).get("id"); username=user_obj.get("from",{}).get("username","N/A"); lang_code=user_obj.get("from",{}).get("language_code","")
-        contact = user_obj.get("contact",{})
-        phone = contact.get("phone_number","") if contact else ""
+        contact = user_obj.get("contact",{}); phone = contact.get("phone_number","") if contact else ""
         entry={"time":get_ist_str(),"uid":str(uid),"chat_id":chat_id,"user_id":user_id,"username":username,"phone":phone,"name":uname,"lang_code":lang_code,"lang":lang,"type":media_type,"user":user_text[:1000],"bot":bot_reply[:1000]}
         CHAT_LOG.append(entry)
         if len(CHAT_LOG)>500: CHAT_LOG=CHAT_LOG[-500:]
@@ -235,25 +232,41 @@ def brain(text,uid,is_owner,uname, user_obj, media_type="text"):
     global MEMORY, PENDING_FIX, LOOP_CACHE, ABUSE, PROFILES, FEEDBACK_LOG
     try:
         uid=str(uid)
-        if uid not in MEMORY: MEMORY[uid]={"hist":"","count":0,"last_user":"","repeat":0,"learned":""}
-        if uid not in LOOP_CACHE: LOOP_CACHE[uid]=[]
-        if uid not in ABUSE: ABUSE[uid]=0
-        if uid not in PROFILES: PROFILES[uid]={"name":uname,"total":0,"gali_level":""}
+        # --- FIX FOR 'total' FAULT ---
+        if uid not in MEMORY or not isinstance(MEMORY[uid], dict):
+            MEMORY[uid]={"hist":"","count":0,"last_user":"","repeat":0,"learned":""}
+        MEMORY[uid].setdefault("hist","")
+        MEMORY[uid].setdefault("count",0)
+        MEMORY[uid].setdefault("last_user","")
+        MEMORY[uid].setdefault("repeat",0)
+        MEMORY[uid].setdefault("learned","")
+
+        if uid not in LOOP_CACHE or not isinstance(LOOP_CACHE[uid], list):
+            LOOP_CACHE[uid]=[]
+        if uid not in ABUSE or not isinstance(ABUSE[uid], int):
+            ABUSE[uid]=0
+        if uid not in PROFILES or not isinstance(PROFILES[uid], dict):
+            PROFILES[uid]={"name":uname,"total":0,"gali_level":"","phone":""}
+        PROFILES[uid].setdefault("total",0)
+        PROFILES[uid].setdefault("gali_level","")
+        PROFILES[uid].setdefault("name",uname)
+        PROFILES[uid].setdefault("phone","")
+        try:
+            PROFILES[uid]["total"]=int(PROFILES[uid].get("total",0))+1
+        except:
+            PROFILES[uid]["total"]=1
+
         low=text.lower().strip()
         user_lang=detect_lang(text)
-        PROFILES[uid]["total"]+=1
 
-        if MEMORY[uid]["last_user"]==low: MEMORY[uid]["repeat"]+=1
+        if MEMORY[uid]["last_user"]==low: MEMORY[uid]["repeat"]=MEMORY[uid].get("repeat",0)+1
         else: MEMORY[uid]["repeat"]=0
         MEMORY[uid]["last_user"]=low
 
-        # Self-learning fix from owner - 100% original fix
         if is_owner and ("yaha ye daal de" in low or "isko aise fix kar" in low or "ye sikh le" in low):
-            # Extract what to learn
             learned = text.replace("yaha ye daal de","").replace("isko aise fix kar","").replace("ye sikh le","").strip()
             if len(learned)>5:
                 MEMORY[uid]["learned"] = (MEMORY[uid].get("learned","") + f"\n{learned}")[-1000:]
-                # Also save as global learning
                 upstash("set","RAKAN_GLOBAL_LEARN", MEMORY[uid]["learned"])
                 save_persist()
                 ans=f"Done Malik, sikh liya 100% original: {learned[:100]}... Ab se aise hi karunga."
@@ -289,7 +302,7 @@ def brain(text,uid,is_owner,uname, user_obj, media_type="text"):
         gali_words = ["madarchod","bhenchod","behenchod","chutiya","chutiye","gandu","bsdk","bhosdike","randi","lodu","maderchod"]
         is_gali = any(g in low for g in gali_words)
         if is_gali and not is_owner:
-            ABUSE[uid]+=1; PROFILES[uid]["gali_level"]=low; save_persist()
+            ABUSE[uid]=ABUSE.get(uid,0)+1; PROFILES[uid]["gali_level"]=low; save_persist()
             if ABUSE[uid]==1:
                 ans=f"{uname} bhai gali mat de yaar, pyaar se baat kar. Pehli warning hai. 🔒 Encrypted"
                 log_to_owner(uid,uname,user_obj,text,ans,user_lang,media_type); return ans, False, None
@@ -344,7 +357,7 @@ def brain(text,uid,is_owner,uname, user_obj, media_type="text"):
 
         if low in ["/report","report"]:
             faults=full_system_audit()
-            msg=f"📊 FULL REPORT {get_ist_str()}\nCode: Rakan V14 11-in-1\n\n"
+            msg=f"📊 FULL REPORT {get_ist_str()}\nCode: Rakan V15 11-in-1 FIXED\n\n"
             for i,f in enumerate(faults,1):
                 msg+=f"{i}. LAYER: {f['layer']}\n   STATUS: {f['status']}\n   LINE: {f.get('line','-')}\n   HATANA: {f.get('current','-')}\n   DALNA: {f.get('fix_code','-')}\n   BAKI: OK same\n\n"
             msg+=f"API: GROQ {len([k for k in GROQ_KEYS if not is_bad(k)])}/{len(GROQ_KEYS)} GM {len([k for k in GEMINI_KEYS if not is_bad(k)])}/{len(GEMINI_KEYS)}\nREDIS: {'OK' if UPSTASH_URL else 'FAULT'}\nELEVEN: {'OK' if ELEVEN_API_KEY else 'Missing'}\nLAST: {LAST_ERROR}\n"
@@ -377,7 +390,7 @@ def brain(text,uid,is_owner,uname, user_obj, media_type="text"):
 
         system=get_lore_fresh(is_owner,user_lang)
         learned_global = upstash("get","RAKAN_GLOBAL_LEARN") or ""
-        user_prompt=f"IST:{get_ist_str()} Owner:{is_owner} Name:{uname} Lang:{user_lang} Total:{PROFILES[uid]['total']} Learned:{learned_global[-500:]} {MEMORY[uid].get('learned','')[-300:]} Hist:{MEMORY[uid]['hist'][-800:]} Msg:{text} -> Reply 1-2 lines short in {user_lang} if not owner else hinglish. Be intelligent, learn from history."
+        user_prompt=f"IST:{get_ist_str()} Owner:{is_owner} Name:{uname} Lang:{user_lang} Total:{PROFILES[uid].get('total',0)} Learned:{learned_global[-500:]} {MEMORY[uid].get('learned','')[-300:]} Hist:{MEMORY[uid]['hist'][-800:]} Msg:{text} -> Reply 1-2 lines short in {user_lang} if not owner else hinglish. Be intelligent, learn from history."
         ans=ask_all(system,user_prompt,is_owner) or "Ha bolo Malik?"
         ans=clean(ans)
         
@@ -402,7 +415,7 @@ def home():
         if BOT_TOKEN and MY_URL:
             try: requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook", params={"url":f"{MY_URL}/webhook"}, timeout=5)
             except: pass
-        return f"Rakan V14 11-in-1 G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} Eleven:{bool(ELEVEN_API_KEY)} {get_ist_str()}",200
+        return f"Rakan V15 FIXED total bug G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} Eleven:{bool(ELEVEN_API_KEY)} {get_ist_str()}",200
     except: return "Error",200
 
 @app.route("/fix", methods=["GET"])
@@ -411,21 +424,21 @@ def fix():
         global GROQ_KEYS,GEMINI_KEYS,OPENAI_KEYS,BAD_KEYS
         if str(request.args.get("id",""))!=OWNER_ID: return "Access Denied",403
         GROQ_KEYS,GEMINI_KEYS,OPENAI_KEYS=get_keys(); BAD_KEYS.clear(); load_persist(); save_persist()
-        return f"FIXED V14 {get_ist_str()} G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} Last:{LAST_ERROR}",200
+        return f"FIXED V15 {get_ist_str()} G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} Last:{LAST_ERROR}",200
     except Exception as e: return f"Fix err {e}",200
 
 @app.route("/audit", methods=["GET"])
 def audit_route():
     try:
         if str(request.args.get("id",""))!=OWNER_ID: return "Access Denied",403
-        return jsonify({"time":get_ist_str(),"code":"Rakan V14 11-in-1","faults":full_system_audit(),"logs":CHAT_LOG[-30:], "feedback":FEEDBACK_LOG[-20:]}),200
+        return jsonify({"time":get_ist_str(),"code":"Rakan V15","faults":full_system_audit(),"logs":CHAT_LOG[-30:], "feedback":FEEDBACK_LOG[-20:]}),200
     except Exception as e: return jsonify({"error":str(e)}),200
 
 @app.route("/dashboard", methods=["GET"])
 def dashboard():
     try:
         if str(request.args.get("id",""))!=OWNER_ID: return "Access Denied",403
-        html=f"<h2>{MALIK_NAME} - Dashboard V14 11-in-1</h2><p>{get_ist_str()}</p><p>GROQ {len(GROQ_KEYS)} GEMINI {len(GEMINI_KEYS)} ELEVEN {bool(ELEVEN_API_KEY)} WEATHER {bool(OPENWEATHER_KEY)}</p><p>Users {len(PROFILES)} Chats {len(CHAT_LOG)} Abuse {sum(ABUSE.values())} Feedback {len(FEEDBACK_LOG)}</p><hr>"
+        html=f"<h2>{MALIK_NAME} - Dashboard V15 FIXED</h2><p>{get_ist_str()}</p><p>GROQ {len(GROQ_KEYS)} GEMINI {len(GEMINI_KEYS)} ELEVEN {bool(ELEVEN_API_KEY)}</p><p>Users {len(PROFILES)} Chats {len(CHAT_LOG)} Abuse {sum(ABUSE.values())} Feedback {len(FEEDBACK_LOG)}</p><hr>"
         for c in CHAT_LOG[-100:][::-1]:
             html+=f"<p><b>{c.get('name')} @{c.get('username')} Phone:{c.get('phone')} ID:{c.get('user_id')}:</b> {c.get('user')} -> {c.get('bot')} [{c.get('type')}] {c.get('time')}</p><hr>"
         return html,200
@@ -434,7 +447,6 @@ def dashboard():
 @app.route("/cron", methods=["GET","POST"])
 def cron():
     try:
-        # Auto weather + news for Malik
         if OWNER_ID!="0" and BOT_TOKEN:
             w=get_weather("Varanasi")
             if w: tg_send(OWNER_ID, f"📰 Auto Update {get_ist_str()}\n🌤️ {w}\nBot Live G:{len(GROQ_KEYS)}")
@@ -446,16 +458,14 @@ def webhook():
     if request.method=="GET": return "Webhook OK "+get_ist_str(),200
     try:
         data=request.get_json(silent=True) or {}; 
-        # Callback query for feedback buttons
         if "callback_query" in data:
             cq=data["callback_query"]; cb_id=cq["id"]; cb_data=cq.get("data",""); from_id=str(cq["from"]["id"]); msg=cq["message"]; chat_id=msg["chat"]["id"]
             if cb_data in ["👍","👎"]:
                 FEEDBACK_LOG.append({"time":get_ist_str(),"uid":from_id,"feedback":cb_data,"msg":msg.get("text","")[:200]})
                 save_persist()
                 if cb_data=="👎":
-                    # Self-learning feedback - inform Malik
-                    tg_send(OWNER_ID, f"⚠️ Feedback Alert Malik\n👤 User {from_id}\n👎 Dislike\nMsg: {msg.get('text','')[:300]}\nBot: {msg.get('reply_to_message',{}).get('text','')[:300]}\n⏰ {get_ist_str()}\n\nTum pucho: 'yaha ye daal de ...' to mai 100% original sikh jaunga.")
-                    requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cb_id,"text":"Thanks, Malik ko bhej diya, wo fix karega"}, timeout=5)
+                    tg_send(OWNER_ID, f"⚠️ Feedback Alert Malik\n👤 User {from_id}\n👎 Dislike\nMsg: {msg.get('text','')[:300]}\n⏰ {get_ist_str()}\n\nTum pucho: 'yaha ye daal de ...' to mai 100% original sikh jaunga.")
+                    requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cb_id,"text":"Thanks, Malik ko bhej diya"}, timeout=5)
                 else:
                     requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cb_id,"text":"Thanks 👍"}, timeout=5)
                 return "ok",200
@@ -467,15 +477,14 @@ def webhook():
         is_owner=(user_id==OWNER_ID)
         if is_owner: uname=MALIK_NAME
 
-        # Human handoff - online/offline
         OWNER_STATUS = upstash("get","OWNER_STATUS") or "offline"
         if is_owner and text.lower().strip() in ["/online","online aa gaya","mai online hu","online"]:
             upstash("set","OWNER_STATUS","online")
-            tg_send(chat_id, "Done Malik, ab bot pause hai. Jo bhi msg karega wo sirf tumhe forward hoga, bot reply nahi karega. /offline likho wapas ON karne ke liye.")
+            tg_send(chat_id, "Done Malik, ab bot pause hai. Jo bhi msg karega wo sirf tumhe forward hoga. /offline likho ON karne ke liye.")
             return "ok",200
         if is_owner and text.lower().strip() in ["/offline","offline kar do","bot start","offline"]:
             upstash("set","OWNER_STATUS","offline")
-            tg_send(chat_id, "Done Malik, bot wapas ON hai, ab mai sambhalunga.")
+            tg_send(chat_id, "Done Malik, bot wapas ON hai.")
             return "ok",200
         if not is_owner and OWNER_STATUS=="online":
             tg_send(OWNER_ID, f"👤 User Online Msg (Bot Paused)\n👤 {uname} ({user_id})\nID:{chat_id}\nMsg: {text}\n\nIs msg ko reply karo, mai user ko bhej dunga.")
@@ -490,10 +499,11 @@ def webhook():
                 tg_send(chat_id, f"✅ Bhej diya {target_chat_id} ko")
                 return "ok",200
 
-        # Contact capture - phone number
         if msg.get("contact"):
             phone=msg["contact"].get("phone_number","")
-            PROFILES[user_id]={"name":uname,"phone":phone,"total":PROFILES.get(user_id,{}).get("total",0)}
+            if user_id not in PROFILES or not isinstance(PROFILES[user_id], dict):
+                PROFILES[user_id]={"name":uname,"total":0,"gali_level":"","phone":""}
+            PROFILES[user_id]["phone"]=phone
             save_persist()
             ans="Number save kar liya Malik" if is_owner else "Thanks, contact save ho gaya 🔒"
             tg_send(chat_id, ans, message_id)
