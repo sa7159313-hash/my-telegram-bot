@@ -1,366 +1,104 @@
-import os, time, json, re, datetime, requests, traceback
-from flask import Flask, request
-import google.generativeai as genai
+# api/cron.py - V35.9 FINAL FIXED
+import os, json, requests, datetime
+from flask import Flask
 
 app = Flask(__name__)
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN","") or os.environ.get("TELEGRAM_BOT_TOKEN","")
 OWNER_ID = str(os.environ.get("OWNER_ID","0")).strip()
-LORE_ENV = os.environ.get("THE_BEAST_KING_MONARCH_AKAAN_LORE","")
+OPENWEATHER_KEY = os.environ.get("OPENWEATHER_API_KEY","")
 UPSTASH_URL = os.environ.get("UPSTASH_REDIS_REST_URL","")
 UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN","")
-ELEVEN_API_KEY = os.environ.get("ELEVENLABS_API_KEY","")
-MALE_VOICE_ID = os.environ.get("ELEVEN_MALE_VOICE","pNInz6obpgDQGcFmaJgB")
-FEMALE_VOICE_ID = os.environ.get("ELEVEN_FEMALE_VOICE","21m00Tcm4TlvDq8ikWAM")
-OPENWEATHER_KEY = os.environ.get("OPENWEATHER_API_KEY","")
-TAVILY_KEY = os.environ.get("TAVILY_API_KEY","")
-GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+VERCEL_TOKEN = os.environ.get("VERCEL_TOKEN","")
+PROJECT_ID = os.environ.get("VERCEL_PROJECT_ID","my-telegram-bot")
 
-MALIK_NAME="MD Saif Ahmad"
-QUEEN_USERNAME="pearly_paradise15"
-
-MEMORY={}; PROFILES={}; BAD_KEYS={}; OWNER_PREF={}; LAST_BOT_MSG={}; LAST_MSG_ID={}; LAST_USER_MSG={}
-
-def get_keys():
-    g,gm=[],[]
-    all_vals = []
-    for k,v in os.environ.items():
-        if not v: continue
-        all_vals.append(str(v))
-    combined = " ".join(all_vals)
-    gsk_found = re.findall(r'gsk_[A-Za-z0-9_-]{20,}', combined)
-    aiza_found = re.findall(r'AIza[0-9A-Za-z_-]{25,}', combined)
-    aq_found = re.findall(r'AQ[A-Za-z0-9_-]{20,}', combined)
-    for env_name, env_val in os.environ.items():
-        if not env_val: continue
-        ev = str(env_val).strip()
-        if len(ev) > 30 and ("GEMINI" in env_name.upper() or "GOOGLE" in env_name.upper()):
-            parts = re.split(r'[,\n;\s]+', ev)
-            for p in parts:
-                p=p.strip().strip('"').strip("'")
-                if len(p) > 25 and p not in aiza_found and p not in aq_found:
-                    if p.startswith("AQ") or p.startswith("AIza") or len(p) > 35:
-                        aq_found.append(p)
-    for p in gsk_found:
-        if p not in g: g.append(p)
-    for p in aiza_found:
-        if p not in gm: gm.append(p)
-    for p in aq_found:
-        if p not in gm and len(p) > 20: gm.append(p)
-    return list(dict.fromkeys(g)), list(dict.fromkeys(gm))
-
-GROQ_KEYS,GEMINI_KEYS=get_keys()
-
-def get_ist_str(): return (datetime.datetime.utcnow()+datetime.timedelta(hours=5,minutes=30)).strftime("%d %b %Y, %I:%M %p IST")
-def get_ist_time_only(): return (datetime.datetime.utcnow()+datetime.timedelta(hours=5,minutes=30)).strftime("%I:%M %p IST")
-
-def tg_send(cid,txt,reply_id=None, buttons=None):
+def upstash_get(key):
     try:
-        p={"chat_id":cid,"text":txt[:3900]}
-        if reply_id: p["reply_to_message_id"]=reply_id
-        if buttons: p["reply_markup"]=json.dumps({"inline_keyboard": buttons})
-        r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=p, timeout=15).json()
-        if r.get("ok"): LAST_MSG_ID[str(cid)]=r["result"]["message_id"]
-        return r.get("ok",False)
-    except: return False
-
-def tg_real_forward(fc, mid, tc):
-    try: return requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/forwardMessage", json={"chat_id":tc,"from_chat_id":fc,"message_id":int(mid)}, timeout=10).status_code==200
-    except: return False
-def tg_real_copy(fc, mid, tc):
-    try: return requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/copyMessage", json={"chat_id":tc,"from_chat_id":fc,"message_id":int(mid)}, timeout=10).status_code==200
-    except: return False
-
-def tg_send_voice(cid, text, gender="female"):
-    try:
-        if not ELEVEN_API_KEY or not text: return False
-        vid=FEMALE_VOICE_ID if gender=="female" else MALE_VOICE_ID
-        rr=requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/{vid}", headers={"xi-api-key":ELEVEN_API_KEY,"Content-Type":"application/json"}, json={"text":text[:400],"model_id":"eleven_multilingual_v2","voice_settings":{"stability":0.55,"similarity_boost":0.8}}, timeout=20)
-        if rr.status_code==200:
-            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendVoice", data={"chat_id":cid}, files={'voice':('v.mp3',rr.content,'audio/mpeg')}, timeout=20)
-            return True
-    except: pass
-    return False
-
-def live_search(q):
-    try:
-        if TAVILY_KEY and len(q)>2 and any(w in q.lower() for w in ["news","price","aaj","latest","crypto","weather","mausam"]):
-            r=requests.post("https://api.tavily.com/search", json={"api_key":TAVILY_KEY,"query":q,"max_results":2,"include_answer":True}, timeout=8)
-            if r.status_code==200:
-                j=r.json(); return (j.get("answer","")+" | "+" | ".join([x.get("content","")[:200] for x in j.get("results",[])]))[:600]
-    except: pass
-    return ""
-
-def transcribe_voice(file_id):
-    try:
-        fp=requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={file_id}", timeout=10).json()["result"]["file_path"]
-        audio=requests.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{fp}", timeout=15).content
-        for k in GROQ_KEYS:
-            try:
-                rr=requests.post("https://api.groq.com/openai/v1/audio/transcriptions", headers={"Authorization": f"Bearer {k}"}, files={'file':('a.ogg',audio,'audio/ogg')}, data={'model':'whisper-large-v3','language':'hi'}, timeout=20)
-                if rr.status_code==200: return rr.json().get("text","")
-            except: continue
-    except: pass
-    return ""
-
-def upstash(cmd,key,val=None):
-    if not UPSTASH_URL or not UPSTASH_TOKEN: return None
-    try:
-        h={"Authorization": f"Bearer {UPSTASH_TOKEN}","Content-Type":"application/json"}
-        if cmd=="get":
-            r=requests.get(f"{UPSTASH_URL}/get/{key}", headers=h, timeout=5)
-            if r.status_code==200:
-                d=r.json().get("result"); return json.loads(d) if d else None
-        else:
-            requests.post(f"{UPSTASH_URL}", headers=h, json=["SET",key,json.dumps(val)], timeout=5)
+        headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"}
+        r=requests.get(f"{UPSTASH_URL}/get/{key}", headers=headers, timeout=5)
+        if r.status_code==200:
+            d=r.json().get("result")
+            return json.loads(d) if d else None
     except: pass
     return None
 
-def load_persist():
-    global MEMORY,PROFILES,OWNER_PREF
-    MEMORY=upstash("get","RAKAN_MEM_V357") or {}
-    PROFILES=upstash("get","RAKAN_PROFILES_V357") or {}
-    OWNER_PREF=upstash("get","RAKAN_PREF") or {"voice_gender":"female","voice_on":False}
-def save_persist():
-    upstash("set","RAKAN_MEM_V357",MEMORY); upstash("set","RAKAN_PROFILES_V357",PROFILES); upstash("set","RAKAN_PREF",OWNER_PREF)
-load_persist()
+def get_profiles():
+    for k in ["RAKAN_PROFILES_V357","RAKAN_PROFILES_V355","RAKAN_PROFILES_V354","RAKAN_PROFILES"]:
+        data = upstash_get(k)
+        if data: return data
+    return {}
 
-def is_bad(k): return k in BAD_KEYS and time.time()-BAD_KEYS[k]<600
-def mark_bad(k): BAD_KEYS[k]=time.time()
-
-def clean(t, user_query=""):
-    if not t: return ""
-    t=t.replace("🙏","")
-    bad_phrases=["I'm sorry, but I can't help","I cannot help with that","I'm not able to provide","As an AI language model","I am Groq","I am Gemini","Here's a quick recap","Sure, I'm speaking in English","How can I help you right now?","kaunse topic pe help","Apne faisle ko dhyaan se","apne andar ki awaaz","zindagi ki coding","Bhai, coding se zyada","Main OpenAI ke GPT-4","Main **Rakan** hoon, ek AI assistant","Md Saif Ahmad meri banane wala nahi","shayad koi vyakti","Bhai, aap ka haal kaisa","Main bhi thik hoon, thoda busy","Dubara ye word mat bolna","Baar bol do usko repeat mat","Aapko chat ki history dekhni hai","Settings > History","History me jaa kar check","History me jaa ke apni","Yeh matlab hai ke samajh gaya, ab agla step batao","Bas aap Settings > History me jaa ke apni chat history dekh sakte hain","apni chat ki history dekhni hai","Agla step hai Settings me jaake","Samajh gaya. Agla step hai Settings","shant raho aur respect se baat karo","Rakan sirf helpful hone ke liye bana hai","itni goliyan mat maar","Rakan ka kaam hai madad karna, na ki gaali khilwani","Kuch aur puchna ho toh batao, warna chup reh","abuse nahi"]
-    for bp in bad_phrases:
-        if bp.lower() in t.lower(): return ""
-    if "pakistan" not in user_query.lower():
-        t=re.sub(r"1947 mein Pakistan.*|Pakistan ne British.*|Pakistan ko azaadi.*|Pakistan ke roop mein.*", "", t, flags=re.I)
-    t=re.sub(r"\s+[A-Z]\s*$", "", t)
-    t=re.sub(r"\s+"," ",t).strip()
-    return t[:900]
-
-def ask_groq(sys,user):
-    if not GROQ_KEYS: return None
-    MODELS = ["openai/gpt-oss-20b","meta-llama/llama-4-scout-17b-16e-instruct","qwen/qwen3.8-27b"]
-    for k in GROQ_KEYS:
-        if is_bad(k): continue
-        for m in MODELS:
-            try:
-                r=requests.post(GROQ_URL, headers={"Authorization": f"Bearer {k}","Content-Type":"application/json"}, json={"model":m,"messages":[{"role":"system","content":sys},{"role":"user","content":user}],"temperature":0.65,"max_tokens":450}, timeout=18)
-                if r.status_code==200:
-                    txt=r.json()["choices"][0]["message"]["content"]
-                    if txt and "sorry" not in txt.lower()[:80] and "OpenAI" not in txt and "GPT-4" not in txt and "Dubara ye word" not in txt: return txt
-                if r.status_code in [401,429]: mark_bad(k); break
-            except: continue
-    return None
-
-def ask_gemini(sys,user):
-    if not GEMINI_KEYS: return None
-    MODELS = ["gemini-3.5-flash","gemini-2.5-flash","gemini-3-flash-preview","gemini-2.0-flash"]
-    for k in GEMINI_KEYS:
-        if is_bad(k): continue
-        for m in MODELS:
-            try:
-                genai.configure(api_key=k)
-                model=genai.GenerativeModel(m, system_instruction=sys)
-                res=model.generate_content(user, generation_config={"temperature":0.65,"max_output_tokens":450})
-                if res and getattr(res,'text',None):
-                    t=res.text
-                    if "sorry" not in t.lower()[:80] and "OpenAI" not in t and "Dubara ye word" not in t: return t
-            except Exception as e:
-                if "429" in str(e) or "401" in str(e) or "400" in str(e): mark_bad(k); break
-                continue
-    return None
-
-def get_weather(city):
+def get_weather_world(city="Varanasi"):
     try:
         city=city.strip().title()
         if OPENWEATHER_KEY:
-            r=requests.get(f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={OPENWEATHER_KEY}&units=metric", timeout=7)
+            r=requests.get(f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={OPENWEATHER_KEY}&units=metric", timeout=6)
             if r.status_code==200:
-                d=r.json(); return f"{d['name']}: {d['weather'][0]['description']}, {d['main']['temp']}°C"
+                d=r.json()
+                return f"{d['name']}, {d['sys']['country']}: {d['weather'][0]['description'].title()}, {d['main']['temp']}°C"
         r=requests.get(f"https://wttr.in/{city}?format=%C+%t", timeout=6)
-        if r.status_code==200: return f"{city}: {r.text}"
+        return f"{city}: {r.text}" if r.status_code==200 else f"{city}: N/A"
+    except: 
+        return f"{city}: N/A"
+
+def tg_send(cid, txt):
+    try: 
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id": cid, "text": txt[:3500]}, timeout=10)
     except: pass
-    return f"{city} ka data nahi mila"
 
-def brain(text,uid,is_owner,is_queen,uname,username,lang,mtype):
-    global MEMORY,PROFILES,LAST_BOT_MSG,LAST_USER_MSG
-    uid=str(uid)
-    if uid not in MEMORY: MEMORY[uid]={"hist":""}
-    if uid not in PROFILES: PROFILES[uid]={"total":0,"city":"","username":username,"lang":lang}
-    PROFILES[uid]["total"]+=1
-    PROFILES[uid]["username"]=username
-    PROFILES[uid]["lang"]=lang
-    LAST_USER_MSG[uid]=text
-    low=text.lower().strip()
-
-    if low.startswith("/start"):
-        v_on="ON 🔊" if OWNER_PREF.get("voice_on") else "OFF 🔇"
-        if is_owner:
-            ans=f"Assalamu Alaikum Malik 👑 {MALIK_NAME}\nWelcome to your world the Shadow King\nTera Rakan hazir hai 🔥\nV35.7 G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}\nVoice:{OWNER_PREF.get('voice_gender')} {v_on}\nLanguage: Urdu Roman\n{get_ist_str()}\n\nVoice Mode ON = Orb 🔥"
-        else:
-            ans=f"Assalamu Alaikum {uname} 👋\nWelcome to your world the Shadow King\nMain Rakan hu, Malik {MALIK_NAME} ne banaya hai 🔒"
-        LAST_BOT_MSG[uid]=ans; return ans, False, True
-
-    if any(x in low for x in ["kisne banaya","who made you","openai","gpt-4"]):
-        ans="Mujhe Malik ne banaya hai, MD Saif Ahmad ne 🔥👑" if is_owner else "Mujhe Malik MD Saif Ahmad ne banaya hai 🔥"
-        LAST_BOT_MSG[uid]=ans; return ans, False, False
-
-    if any(x in low for x in ["maine pucha kya tumse","ye maine pucha kya","ye pucha kya maine","pucha kya tumse maine"]):
-        ans="Maaf karo Malik, aapne sahi kaha 👑 Samajh gaya, bolo ab kya hukam hai? Seedha kaam batao kar deta hu 🔥" if is_owner else f"Maaf karna {uname}, bolo kya chahiye? 🔒"
-        LAST_BOT_MSG[uid]=ans; return ans, False, False
-
-    if any(x in low for x in ["or bata","q bata","or batao","q batao","kya samjhe","kya samjha","kya jake","kya jaake","bosdike","bhosdike"]):
-        if any(g in low for g in ["bosdike","bhosdike","gand","maderchod","chutiya"]):
-            ans="Maaf karo Malik, gussa thook do, bolo kya kaam hai? Hazir hu 🔥" if is_owner else f"Maaf karna {uname}, bolo kya kaam hai? 🔒"
-        else:
-            ans="Jee Malik samajh gaya, bolo agla hukam kya hai? Kya kaam karna hai batao 🔥" if is_owner else f"Samajh gaya {uname}, bolo kya karna hai? 🔒"
-        LAST_BOT_MSG[uid]=ans; return ans, False, False
-
-    if any(x in low for x in ["gand","maderchod","madarchod","bhenchod","behenchod","chutiya","lund","gaand"]):
-        ans="Maaf karo Malik, mai sun raha hu, bolo kya hukam hai? Jo bolo ge kar dunga 🔥" if is_owner else f"Maaf karna {uname}, bolo kya kaam hai? 🔒"
-        LAST_BOT_MSG[uid]=ans; return ans, False, False
-
-    if low in ["acha","accha","ok","okay","thik","theek","samajh gaya","samaj gaya","hmm","achha","acha or","accha or"]:
-        last = LAST_BOT_MSG.get(uid,"").lower()
-        if "maaf karo" in last or "naraz ho kya" in last:
-            ans="Samajh gaya Malik, ab aage bolo kya kaam hai? 🔥" if is_owner else f"Samajh gaya {uname}, bolo agla kya karna hai? 🔒"
-        else:
-            ans="Jee Malik samajh gaya, bolo agla hukam kya hai? 🔥" if is_owner else f"Jee {uname} samajh gaya, bolo kya chahiye? 🔒"
-        LAST_BOT_MSG[uid]=ans; return ans, False, False
-
-    if low in ["hi","hii","hiii","hello","helo","hy","hey","salam","salaam"]:
-        ans="Jee Malik bolo kya hukam hai? 😎🔥" if is_owner else f"Jee {uname} bolo kya haal hai? 😊🔒"
-        LAST_BOT_MSG[uid]=ans; return ans, False, False
-
-    only_emoji = len(re.sub(r'[^\w\s]','', text, flags=re.UNICODE).strip())==0 and len(text.strip())<=4
-    if only_emoji or low in ["😒","😒😒","😐","😑","😔"]:
-        last = LAST_BOT_MSG.get(uid,"")
-        if "Naraz ho kya" in last:
-            ans="Bolo na Malik kya kaam hai? Mai sun raha hu 🔥" if is_owner else f"Bolo {uname} kya chahiye? 🔒"
-        else:
-            ans="Jee Malik bolo na, kya hua? Naraz ho kya? Hukam karo 😊" if is_owner else f"Jee {uname} bolo, kya haal hai? 😊🔒"
-        LAST_BOT_MSG[uid]=ans; return ans, False, False
-
-    if any(x in low for x in ["madad hi nahi","help nahi kar","madad nahi kar"]):
-        ans="Jee Malik kar raha hu na, bolo kya chahiye? Jo bolo ge wo kar dunga, seedha bolo kya kaam hai? 🔥" if is_owner else f"Kar raha hu {uname}, bolo kya kaam hai? 🔒"
-        LAST_BOT_MSG[uid]=ans; return ans, False, False
-
-    if any(x in low for x in ["abe ye kya hai","ye kya bakwas","mat bhej","layak ho tum","mind set"]):
-        ans="Maaf karo Malik, mai hazir hu, bolo kya hukam hai? 🔥" if is_owner else f"Maaf karna {uname}, bolo kya kaam hai? 🔒"
-        MEMORY[uid]["hist"]=""; LAST_BOT_MSG[uid]=ans; return ans, False, False
-
-    if "kya madad" in low or "kya help" in low:
-        ans="Malik jo hukam karo ge wo ho jaye ga, bolo kya karna hai? 🔥" if is_owner else f"Jo bolo {uname} kar dunga 🔒"
-        LAST_BOT_MSG[uid]=ans; return ans, False, False
-
-    if "coding ati" in low or "code likhna nahi ata" in low or "mujhe code likhna" in low:
-        ans="Jee Malik ati hai, bina code ke bhi bot bana sakte hain, drag-drop se. Bolo kaisa bot chahiye? 🔥" if is_owner else f"Jee {uname} ati hai, drag-drop se bina code ke bhi ban sakta hai 🔒"
-        LAST_BOT_MSG[uid]=ans; return ans, False, False
-
-    if "kalma" in low:
-        ans="Pehela Kalma Tayyab: La ilaha illallah Muhammadur Rasulullah ﷺ"
-        LAST_BOT_MSG[uid]=ans; return ans, False, False
-
-    if "time kya" in low or "kitna baja" in low:
-        ans=f"Abhi {get_ist_time_only()} ho raha hai Malik, {get_ist_str()} 📍"
-        LAST_BOT_MSG[uid]=ans; return ans, False, False
-
-    if "who i am" in low or "mai kaun hu" in low:
-        ans=f"Tum Malik ho, {MALIK_NAME}, Shadow King 👑🔥" if is_owner else f"Tum {uname} ho 🔒"
-        LAST_BOT_MSG[uid]=ans; return ans, False, False
-
-    if any(x in low for x in ["voice on","orb on"]):
-        OWNER_PREF["voice_on"]=True; save_persist()
-        ans="Voice Mode ON kar diya Malik 🔊"; LAST_BOT_MSG[uid]=ans; return ans, True, False
-    if any(x in low for x in ["voice off","orb off"]):
-        OWNER_PREF["voice_on"]=False; save_persist()
-        ans="Voice Mode OFF kar diya Malik 🔇"; LAST_BOT_MSG[uid]=ans; return ans, False, False
-    if "female voice" in low: OWNER_PREF["voice_gender"]="female"; save_persist(); ans="Female voice lock 👩"; LAST_BOT_MSG[uid]=ans; return ans, False, False
-    if "male voice" in low: OWNER_PREF["voice_gender"]="male"; save_persist(); ans="Male voice lock 👨"; LAST_BOT_MSG[uid]=ans; return ans, False, False
-
-    if low.startswith("/orv") and is_owner:
-        orv=upstash("get","RAKAN_LIKES") or {"like":0,"dislike":0}
-        ans=f"📊 ORV V35.7 {get_ist_str()}\n👍 {orv.get('like',0)} 👎 {orv.get('dislike',0)}\nG:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}"; return ans, False, False
-
-    if "mausam" in low or "weather" in low:
-        city=PROFILES[uid].get("city") or "Varanasi"
-        ans=f"🌤️ {get_weather(city)} | {get_ist_str()}"; LAST_BOT_MSG[uid]=ans; return ans, False, False
-
-    search_ctx=live_search(text)
-    sys=f"You are Rakan, made by Malik MD Saif Ahmad only. Never say OpenAI GPT-4. Never say Settings History. Never say chat history dekhni hai. Never lecture, never say respect se baat karo, never say abuse nahi, never say goliyan mat maar. Reply Urdu Roman Hinglish 1-2 lines short, helpful, Malik is owner always respect him even if he abuses. If user says Acha, say Samajh gaya bolo agla kya karna hai. No life gyaan. IST {get_ist_str()} {search_ctx}" if is_owner else f"You are Rakan, made by Malik MD Saif Ahmad. Reply Urdu Roman short + 🔒. Never say Settings History. Never lecture. IST {get_ist_str()} {search_ctx}"
-
-    raw=ask_groq(sys, f"Hist {MEMORY[uid]['hist'][-300:]} Msg {text}") or ask_gemini(sys, f"Hist {MEMORY[uid]['hist'][-300:]} Msg {text}")
-    if not raw or len(clean(raw, text))<2:
-        raw="Jee Malik bolo kya hukam hai? 🔥" if is_owner else f"Jee {uname} bolo kya chahiye? 🔒"
-    else:
-        raw=clean(raw, text)
-        if not raw: raw="Jee Malik bolo kya hukam hai? 🔥" if is_owner else f"Jee {uname} bolo kya chahiye? 🔒"
-
-    ans=raw[:900]
-    MEMORY[uid]["hist"]=(MEMORY[uid]["hist"]+f"\nU:{text}\nR:{ans}")[-800:]
-    save_persist(); LAST_BOT_MSG[uid]=ans
-    if not is_owner: ans+=" 🔒"
-    return ans, OWNER_PREF.get("voice_on",False) and is_owner, False
-
-def make_btns(is_owner=False, is_start=False):
-    icon_btns = [{"text": "📋", "callback_data": "COPY"},{"text": "↗️", "callback_data": "FWD"},{"text": "👍", "callback_data": "LIKE"},{"text": "👎", "callback_data": "DISLIKE"}]
-    if is_owner:
-        if is_start: return [icon_btns]
-        else: return None
-    else:
-        return [icon_btns]
-
-@app.route("/", methods=["GET"])
-def home(): return f"Rakan V35.7 Fixed G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} {get_ist_str()}",200
-@app.route("/debug", methods=["GET"])
-def debug(): return f"V35.7 OWNER {OWNER_ID} G {len(GROQ_KEYS)} GM {len(GEMINI_KEYS)} AQ+AIza Supported PREF {OWNER_PREF}",200
-
-@app.route("/webhook", methods=["POST","GET"])
-@app.route("/api/index", methods=["POST","GET"])
-def webhook():
-    if request.method=="GET": return debug() if "debug" in request.path.lower() else home()
+def auto_clean_storage():
+    if not VERCEL_TOKEN:
+        return "skip - add VERCEL_TOKEN in env"
     try:
-        data=request.get_json(silent=True) or {}
-        if "callback_query" in data:
-            cq=data["callback_query"]; cid=str(cq["message"]["chat"]["id"]); uid=str(cq["from"]["id"]); cdata=cq["data"]
-            last_id=LAST_MSG_ID.get(cid) or cq["message"]["message_id"]
-            last_user_text=LAST_USER_MSG.get(uid,"-")
-            last_bot_text=LAST_BOT_MSG.get(uid,"-")
-            profile=PROFILES.get(uid,{})
-            uname=profile.get("username","-")
-            lang=profile.get("lang","-")
-            try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]}, timeout=5)
-            except: pass
-            if cdata=="COPY": tg_real_copy(cid, last_id, cid); return "ok",200
-            if cdata=="FWD": tg_real_forward(cid, last_id, cid); return "ok",200
-            if cdata in ["LIKE","DISLIKE"]:
-                orv=upstash("get","RAKAN_LIKES") or {"like":0,"dislike":0}
-                if cdata=="LIKE": orv["like"]=orv.get("like",0)+1
-                else: orv["dislike"]=orv.get("dislike",0)+1
-                upstash("set","RAKAN_LIKES",orv)
-                full_data = f"📩 FULL DATA\n👤 {uname} (@{uname}) Phone:\n🆔 UID:{uid} CID:{cid}\n🗣️ Lang:{lang}\n📦 Type:text\nUser: {last_user_text}\nBot: {last_bot_text}\n⏰ {get_ist_str()}, {datetime.datetime.now().strftime('%A')}\nAction: {cdata} V35.7"
-                tg_send(OWNER_ID, full_data)
-                tg_send(cid, "Shukriya ❤️" if cdata=="LIKE" else "Batao kya galat laga?")
-                return "ok",200
-            return "ok",200
-        msg=data.get("message",{}) or {}; chat_id=msg.get("chat",{}).get("id"); user_id=str(msg.get("from",{}).get("id",0)); uname=msg.get("from",{}).get("first_name","user"); username=msg.get("from",{}).get("username","") or ""; lang=msg.get("from",{}).get("language_code","") or "en"; mtype="text"
-        text=msg.get("text","") or msg.get("caption","") or ""; mid=msg.get("message_id"); is_voice=False
-        if "voice" in msg or "audio" in msg:
-            is_voice=True; mtype="voice"
-            fid=msg.get("voice",{}).get("file_id") or msg.get("audio",{}).get("file_id")
-            text=transcribe_voice(fid) or "[Voice]"
-        if not chat_id: return "ok",200
-        is_owner=(user_id==OWNER_ID); is_queen=(username.lower()==QUEEN_USERNAME.lower())
-        if is_owner: uname=MALIK_NAME
-        ans, voice_flag, is_start = brain(text,user_id,is_owner,is_queen,uname,username,lang,mtype)
-        if ans=="Archived": return "ok",200
-        btns = make_btns(is_owner, is_start)
-        tg_send(chat_id, ans, mid, btns)
-        if voice_flag and is_owner:
-            tg_send_voice(chat_id, ans, OWNER_PREF.get("voice_gender","female"))
-        return "ok",200
+        h = {"Authorization": f"Bearer {VERCEL_TOKEN}"}
+        real_project_id = PROJECT_ID
+        if not PROJECT_ID.startswith("prj_"):
+            pr = requests.get(f"https://api.vercel.com/v9/projects/{PROJECT_ID}", headers=h, timeout=15)
+            if pr.status_code==200:
+                real_project_id = pr.json().get("id", PROJECT_ID)
+        
+        url = f"https://api.vercel.com/v6/deployments?projectId={real_project_id}&limit=40"
+        r = requests.get(url, headers=h, timeout=15).json()
+        deps = r.get("deployments",[])
+        
+        if len(deps) <= 3:
+            return f"skip - only {len(deps)} deps, no need clean"
+            
+        deleted = 0
+        for d in deps[3:]:
+            dep_id = d.get("uid")
+            del_r = requests.delete(f"https://api.vercel.com/v13/deployments/{dep_id}?projectId={real_project_id}", headers=h, timeout=15)
+            if del_r.status_code in [200,202,204]:
+                deleted+=1
+                
+        return f"cleaned {deleted} | left {3}"
     except Exception as e:
-        print(f"ERR {e} {traceback.format_exc()}"); return "ok",200
+        return f"clean err {str(e)[:100]}"
+
+def main_logic():
+    try:
+        if OWNER_ID=="0" or not BOT_TOKEN: 
+            return "no env - BOT_TOKEN/OWNER_ID missing"
+        
+        profiles = get_profiles()
+        owner_city = profiles.get(OWNER_ID, {}).get("city") or "Varanasi"
+        
+        w = get_weather_world(owner_city)
+        ist = (datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)).strftime("%d %b %I:%M %p IST")
+        clean_info = auto_clean_storage()
+        msg = f"📰 Auto Weather V35.9 {ist}\n📍 {w}\n✅ Locked city: {owner_city}\n🧹 Storage Clean: {clean_info}\nBot Live"
+        tg_send(OWNER_ID, msg)
+        return f"OK {owner_city} - {w} - {clean_info}"
+    except Exception as e:
+        return f"err {e}"
+
+@app.route('/api/cron', methods=['GET'])
+@app.route('/api/cron/', methods=['GET'])
+def cron_route():
+    result = main_logic()
+    return result, 200
+
+# Health check
+@app.route('/', methods=['GET'])
+def home():
+    return "Cron V35.9 OK - use /api/cron", 200
