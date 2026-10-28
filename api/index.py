@@ -199,7 +199,7 @@ def brain(text,uid,is_owner,is_queen,uname,username,lang,mtype):
     if low.startswith("/start"):
         v_on="ON 🔊" if OWNER_PREF.get("voice_on") else "OFF 🔇"
         if is_owner:
-            ans=f"Assalamu Alaikum Malik 👑 {MALIK_NAME}\nWelcome to your world the Shadow King\nTera Rakan hazir hai 🔥\nV35.7 G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}\nVoice:{OWNER_PREF.get('voice_gender')} {v_on}\nLanguage: Urdu Roman\n{get_ist_str()}\n\nVoice Mode ON = Orb 🔥"
+            ans=f"Assalamu Alaikum Malik 👑 {MALIK_NAME}\nWelcome to your world the Shadow King\nTera Rakan hazir hai 🔥\nV35.9 G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}\nVoice:{OWNER_PREF.get('voice_gender')} {v_on}\nLanguage: Urdu Roman\n{get_ist_str()}\n\nVoice Mode ON = Orb 🔥"
         else:
             ans=f"Assalamu Alaikum {uname} 👋\nWelcome to your world the Shadow King\nMain Rakan hu, Malik {MALIK_NAME} ne banaya hai 🔒"
         LAST_BOT_MSG[uid]=ans; return ans, False, True
@@ -212,7 +212,7 @@ def brain(text,uid,is_owner,is_queen,uname,username,lang,mtype):
         ans="Maaf karo Malik, aapne sahi kaha 👑 Samajh gaya, bolo ab kya hukam hai? Seedha kaam batao kar deta hu 🔥" if is_owner else f"Maaf karna {uname}, bolo kya chahiye? 🔒"
         LAST_BOT_MSG[uid]=ans; return ans, False, False
 
-    if any(x in low for x in ["or bata","q bata","or batao","q batao","kya samjhe","kya samjha","kya jake","kya jaake","bosdike","bhosdike"]):
+    if any(x in low for x in ["or bata","q bata","or batao","q batao","kya samjhe","kya samjha","kya jake","kya jaake","bosdike","bhosdike","or bataoo","or bataooo","or bta","or btaa"]):
         if any(g in low for g in ["bosdike","bhosdike","gand","maderchod","chutiya"]):
             ans="Maaf karo Malik, gussa thook do, bolo kya kaam hai? Hazir hu 🔥" if is_owner else f"Maaf karna {uname}, bolo kya kaam hai? 🔒"
         else:
@@ -283,7 +283,7 @@ def brain(text,uid,is_owner,is_queen,uname,username,lang,mtype):
 
     if low.startswith("/orv") and is_owner:
         orv=upstash("get","RAKAN_LIKES") or {"like":0,"dislike":0}
-        ans=f"📊 ORV V35.7 {get_ist_str()}\n👍 {orv.get('like',0)} 👎 {orv.get('dislike',0)}\nG:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}"; return ans, False, False
+        ans=f"📊 ORV V35.9 {get_ist_str()}\n👍 {orv.get('like',0)} 👎 {orv.get('dislike',0)}\nG:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}"; return ans, False, False
 
     if "mausam" in low or "weather" in low:
         city=PROFILES[uid].get("city") or "Varanasi"
@@ -314,9 +314,9 @@ def make_btns(is_owner=False, is_start=False):
         return [icon_btns]
 
 @app.route("/", methods=["GET"])
-def home(): return f"Rakan V35.7 Fixed G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} {get_ist_str()}",200
+def home(): return f"Rakan V35.9 Fixed G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} {get_ist_str()}",200
 @app.route("/debug", methods=["GET"])
-def debug(): return f"V35.7 OWNER {OWNER_ID} G {len(GROQ_KEYS)} GM {len(GEMINI_KEYS)} AQ+AIza Supported PREF {OWNER_PREF}",200
+def debug(): return f"V35.9 OWNER {OWNER_ID} G {len(GROQ_KEYS)} GM {len(GEMINI_KEYS)} AQ+AIza Supported PREF {OWNER_PREF}",200
 
 @app.route("/webhook", methods=["POST","GET"])
 @app.route("/api/index", methods=["POST","GET"])
@@ -341,7 +341,7 @@ def webhook():
                 if cdata=="LIKE": orv["like"]=orv.get("like",0)+1
                 else: orv["dislike"]=orv.get("dislike",0)+1
                 upstash("set","RAKAN_LIKES",orv)
-                full_data = f"📩 FULL DATA\n👤 {uname} (@{uname}) Phone:\n🆔 UID:{uid} CID:{cid}\n🗣️ Lang:{lang}\n📦 Type:text\nUser: {last_user_text}\nBot: {last_bot_text}\n⏰ {get_ist_str()}, {datetime.datetime.now().strftime('%A')}\nAction: {cdata} V35.7"
+                full_data = f"📩 FULL DATA\n👤 {uname} (@{uname}) Phone:\n🆔 UID:{uid} CID:{cid}\n🗣️ Lang:{lang}\n📦 Type:text\nUser: {last_user_text}\nBot: {last_bot_text}\n⏰ {get_ist_str()}, {datetime.datetime.now().strftime('%A')}\nAction: {cdata} V35.9"
                 tg_send(OWNER_ID, full_data)
                 tg_send(cid, "Shukriya ❤️" if cdata=="LIKE" else "Batao kya galat laga?")
                 return "ok",200
