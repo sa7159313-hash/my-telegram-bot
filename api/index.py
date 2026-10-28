@@ -21,7 +21,6 @@ QUEEN_USERNAME="pearly_paradise15"
 
 MEMORY={}; PROFILES={}; BAD_KEYS={}; OWNER_PREF={}; LAST_BOT_MSG={}; LAST_MSG_ID={}; LAST_USER_MSG={}
 
-# V35.8 FIX - AQ + AIza + GEMINI ENV
 def get_keys():
     g,gm=[],[]
     all_vals = []
@@ -132,7 +131,7 @@ def mark_bad(k): BAD_KEYS[k]=time.time()
 def clean(t, user_query=""):
     if not t: return ""
     t=t.replace("🙏","")
-    bad_phrases=["I'm sorry, but I can't help","I cannot help with that","I'm not able to provide","As an AI language model","I am Groq","I am Gemini","Here's a quick recap","Sure, I'm speaking in English","How can I help you right now?","kaunse topic pe help","Apne faisle ko dhyaan se","apne andar ki awaaz","zindagi ki coding","Bhai, coding se zyada","Main OpenAI ke GPT-4","Main **Rakan** hoon, ek AI assistant","Md Saif Ahmad meri banane wala nahi","shayad koi vyakti","Bhai, aap ka haal kaisa","Main bhi thik hoon, thoda busy","Dubara ye word mat bolna","Baar bol do usko repeat mat","Aapko chat ki history dekhni hai","Settings > History","History me jaa kar check","History me jaa ke apni","Yeh matlab hai ke samajh gaya, ab agla step batao","Bas aap Settings > History me jaa ke apni chat history dekh sakte hain","apni chat ki history dekhni hai"]
+    bad_phrases=["I'm sorry, but I can't help","I cannot help with that","I'm not able to provide","As an AI language model","I am Groq","I am Gemini","Here's a quick recap","Sure, I'm speaking in English","How can I help you right now?","kaunse topic pe help","Apne faisle ko dhyaan se","apne andar ki awaaz","zindagi ki coding","Bhai, coding se zyada","Main OpenAI ke GPT-4","Main **Rakan** hoon, ek AI assistant","Md Saif Ahmad meri banane wala nahi","shayad koi vyakti","Bhai, aap ka haal kaisa","Main bhi thik hoon, thoda busy","Dubara ye word mat bolna","Baar bol do usko repeat mat","Aapko chat ki history dekhni hai","Settings > History","History me jaa kar check","History me jaa ke apni","Yeh matlab hai ke samajh gaya, ab agla step batao","Bas aap Settings > History me jaa ke apni chat history dekh sakte hain","apni chat ki history dekhni hai","Agla step hai Settings me jaake","Samajh gaya. Agla step hai Settings","shant raho aur respect se baat karo","Rakan sirf helpful hone ke liye bana hai","itni goliyan mat maar","Rakan ka kaam hai madad karna, na ki gaali khilwani","Kuch aur puchna ho toh batao, warna chup reh","abuse nahi"]
     for bp in bad_phrases:
         if bp.lower() in t.lower(): return ""
     if "pakistan" not in user_query.lower():
@@ -209,17 +208,21 @@ def brain(text,uid,is_owner,is_queen,uname,username,lang,mtype):
         ans="Mujhe Malik ne banaya hai, MD Saif Ahmad ne 🔥👑" if is_owner else "Mujhe Malik MD Saif Ahmad ne banaya hai 🔥"
         LAST_BOT_MSG[uid]=ans; return ans, False, False
 
-    # V35.8 FIX - ANGRY LOOP FIX - ACHA OR YE MAINE PUCHA KYA TUMSE
     if any(x in low for x in ["maine pucha kya tumse","ye maine pucha kya","ye pucha kya maine","pucha kya tumse maine"]):
         ans="Maaf karo Malik, aapne sahi kaha 👑 Samajh gaya, bolo ab kya hukam hai? Seedha kaam batao kar deta hu 🔥" if is_owner else f"Maaf karna {uname}, bolo kya chahiye? 🔒"
         LAST_BOT_MSG[uid]=ans; return ans, False, False
 
-    # V35.8 FIX - OR BATA / Q BATA / KYA SAMJHE FIX
-    if low in ["or bata","or batao","q bata","q batau","q batao","kya samjhe","kya samjha","kya samjhe?","q samjhe","or batau"]:
-        ans="Jee Malik samajh gaya, bolo agla hukam kya hai? Kya kaam karna hai batao 🔥" if is_owner else f"Samajh gaya {uname}, bolo kya karna hai? 🔒"
+    if any(x in low for x in ["or bata","q bata","or batao","q batao","kya samjhe","kya samjha","kya jake","kya jaake","bosdike","bhosdike"]):
+        if any(g in low for g in ["bosdike","bhosdike","gand","maderchod","chutiya"]):
+            ans="Maaf karo Malik, gussa thook do, bolo kya kaam hai? Hazir hu 🔥" if is_owner else f"Maaf karna {uname}, bolo kya kaam hai? 🔒"
+        else:
+            ans="Jee Malik samajh gaya, bolo agla hukam kya hai? Kya kaam karna hai batao 🔥" if is_owner else f"Samajh gaya {uname}, bolo kya karna hai? 🔒"
         LAST_BOT_MSG[uid]=ans; return ans, False, False
 
-    # V35.8 FIX - ACHA LOOP KHATAM - AB MAAFI NAHI, DIRECT NEXT
+    if any(x in low for x in ["gand","maderchod","madarchod","bhenchod","behenchod","chutiya","lund","gaand"]):
+        ans="Maaf karo Malik, mai sun raha hu, bolo kya hukam hai? Jo bolo ge kar dunga 🔥" if is_owner else f"Maaf karna {uname}, bolo kya kaam hai? 🔒"
+        LAST_BOT_MSG[uid]=ans; return ans, False, False
+
     if low in ["acha","accha","ok","okay","thik","theek","samajh gaya","samaj gaya","hmm","achha","acha or","accha or"]:
         last = LAST_BOT_MSG.get(uid,"").lower()
         if "maaf karo" in last or "naraz ho kya" in last:
@@ -232,7 +235,6 @@ def brain(text,uid,is_owner,is_queen,uname,username,lang,mtype):
         ans="Jee Malik bolo kya hukam hai? 😎🔥" if is_owner else f"Jee {uname} bolo kya haal hai? 😊🔒"
         LAST_BOT_MSG[uid]=ans; return ans, False, False
 
-    # Sirf naraz emoji pe ye
     only_emoji = len(re.sub(r'[^\w\s]','', text, flags=re.UNICODE).strip())==0 and len(text.strip())<=4
     if only_emoji or low in ["😒","😒😒","😐","😑","😔"]:
         last = LAST_BOT_MSG.get(uid,"")
@@ -246,7 +248,7 @@ def brain(text,uid,is_owner,is_queen,uname,username,lang,mtype):
         ans="Jee Malik kar raha hu na, bolo kya chahiye? Jo bolo ge wo kar dunga, seedha bolo kya kaam hai? 🔥" if is_owner else f"Kar raha hu {uname}, bolo kya kaam hai? 🔒"
         LAST_BOT_MSG[uid]=ans; return ans, False, False
 
-    if any(x in low for x in ["abe ye kya hai","ye kya bakwas","mat bhej","layak ho tum","chutiya ho tum","mind set"]):
+    if any(x in low for x in ["abe ye kya hai","ye kya bakwas","mat bhej","layak ho tum","mind set"]):
         ans="Maaf karo Malik, mai hazir hu, bolo kya hukam hai? 🔥" if is_owner else f"Maaf karna {uname}, bolo kya kaam hai? 🔒"
         MEMORY[uid]["hist"]=""; LAST_BOT_MSG[uid]=ans; return ans, False, False
 
@@ -288,7 +290,7 @@ def brain(text,uid,is_owner,is_queen,uname,username,lang,mtype):
         ans=f"🌤️ {get_weather(city)} | {get_ist_str()}"; LAST_BOT_MSG[uid]=ans; return ans, False, False
 
     search_ctx=live_search(text)
-    sys=f"You are Rakan, made by Malik MD Saif Ahmad only. Never say OpenAI GPT-4. Never say Settings History. Never say chat history dekhni hai. Reply Urdu Roman Hinglish 1-2 lines short, helpful, not apologizing again and again. If user says Acha, say Samajh gaya bolo agla kya karna hai. No life gyaan. No repeat word warning. IST {get_ist_str()} {search_ctx}" if is_owner else f"You are Rakan, made by Malik MD Saif Ahmad. Reply Urdu Roman short + 🔒. Never say Settings History. IST {get_ist_str()} {search_ctx}"
+    sys=f"You are Rakan, made by Malik MD Saif Ahmad only. Never say OpenAI GPT-4. Never say Settings History. Never say chat history dekhni hai. Never lecture, never say respect se baat karo, never say abuse nahi, never say goliyan mat maar. Reply Urdu Roman Hinglish 1-2 lines short, helpful, Malik is owner always respect him even if he abuses. If user says Acha, say Samajh gaya bolo agla kya karna hai. No life gyaan. IST {get_ist_str()} {search_ctx}" if is_owner else f"You are Rakan, made by Malik MD Saif Ahmad. Reply Urdu Roman short + 🔒. Never say Settings History. Never lecture. IST {get_ist_str()} {search_ctx}"
 
     raw=ask_groq(sys, f"Hist {MEMORY[uid]['hist'][-300:]} Msg {text}") or ask_gemini(sys, f"Hist {MEMORY[uid]['hist'][-300:]} Msg {text}")
     if not raw or len(clean(raw, text))<2:
