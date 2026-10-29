@@ -120,7 +120,9 @@ def load_persist():
     global MEMORY,PROFILES,OWNER_PREF
     MEMORY=upstash("get","RAKAN_MEM_V357") or {}
     PROFILES=upstash("get","RAKAN_PROFILES_V357") or {}
-    OWNER_PREF=upstash("get","RAKAN_PREF") or {"voice_gender":"female","voice_on":False}
+    OWNER_PREF=upstash("get","RAKAN_PREF") or {"voice_gender":"female","voice_on":False,"online":False,"last_online":0}
+    if "online" not in OWNER_PREF: OWNER_PREF["online"]=False
+    if "last_online" not in OWNER_PREF: OWNER_PREF["last_online"]=0
 def save_persist():
     upstash("set","RAKAN_MEM_V357",MEMORY); upstash("set","RAKAN_PROFILES_V357",PROFILES); upstash("set","RAKAN_PREF",OWNER_PREF)
 load_persist()
@@ -198,11 +200,31 @@ def brain(text,uid,is_owner,is_queen,uname,username,lang,mtype):
 
     if low.startswith("/start"):
         v_on="ON 🔊" if OWNER_PREF.get("voice_on") else "OFF 🔇"
+        mode="🟢 ONLINE (Aap khud reply doge)" if OWNER_PREF.get("online") else "🔴 OFFLINE (Rakan auto dega)"
         if is_owner:
-            ans=f"Assalamu Alaikum Malik 👑 {MALIK_NAME}\nWelcome to your world the Shadow King\nTera Rakan hazir hai 🔥\nV35.9 G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}\nVoice:{OWNER_PREF.get('voice_gender')} {v_on}\nLanguage: Urdu Roman\n{get_ist_str()}\n\nVoice Mode ON = Orb 🔥"
+            ans=f"Assalamu Alaikum Malik 👑 {MALIK_NAME}\nWelcome to your world the Shadow King\nTera Rakan hazir hai 🔥\nV36 G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}\nVoice:{OWNER_PREF.get('voice_gender')} {v_on}\nMode:{mode}\n{get_ist_str()}\n\nCommands: /online /offline /status"
         else:
-            ans=f"Assalamu Alaikum {uname} 👋\nWelcome to your world the Shadow King\nMain Rakan hu, Malik {MALIK_NAME} ne banaya hai 🔒"
+            ans=f"Assalamu Alaikum {uname} 👋\nMain Rakan hu, Malik {MALIK_NAME} ne banaya hai 🔒\nMalik abhi {mode} hai"
         LAST_BOT_MSG[uid]=ans; return ans, False, True
+
+    if low in ["/online","/iamonline","online hu","mai online","i am online"]:
+        OWNER_PREF["online"]=True
+        OWNER_PREF["last_online"]=time.time()
+        save_persist()
+        ans="🟢 ONLINE Mode ON - Ab Rakan kisi ko reply nahi dega, Malik khud dega 👑"
+        LAST_BOT_MSG[uid]=ans; return ans, False, False
+
+    if low in ["/offline","/iamoffline","offline hu","auto on","i am offline"]:
+        OWNER_PREF["online"]=False
+        save_persist()
+        ans="🔴 OFFLINE Mode ON - Ab Rakan sabko aapki jagah reply dega 🤖"
+        LAST_BOT_MSG[uid]=ans; return ans, False, False
+
+    if low in ["/status","/mode"]:
+        mode="🟢 ONLINE (Aap khud reply doge)" if OWNER_PREF.get("online") else "🔴 OFFLINE (Rakan auto dega)"
+        last = datetime.datetime.fromtimestamp(OWNER_PREF.get("last_online",0)).strftime("%I:%M %p") if OWNER_PREF.get("last_online") else "Never"
+        ans=f"📊 Status: {mode}\nLast Online: {last}\n{get_ist_str()}"
+        return ans, False, False
 
     if any(x in low for x in ["kisne banaya","who made you","openai","gpt-4"]):
         ans="Mujhe Malik ne banaya hai, MD Saif Ahmad ne 🔥👑" if is_owner else "Mujhe Malik MD Saif Ahmad ne banaya hai 🔥"
@@ -283,7 +305,7 @@ def brain(text,uid,is_owner,is_queen,uname,username,lang,mtype):
 
     if low.startswith("/orv") and is_owner:
         orv=upstash("get","RAKAN_LIKES") or {"like":0,"dislike":0}
-        ans=f"📊 ORV V35.9 {get_ist_str()}\n👍 {orv.get('like',0)} 👎 {orv.get('dislike',0)}\nG:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}"; return ans, False, False
+        ans=f"📊 ORV V36 {get_ist_str()}\n👍 {orv.get('like',0)} 👎 {orv.get('dislike',0)}\nMode:{'ONLINE' if OWNER_PREF.get('online') else 'OFFLINE'}\nG:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}"; return ans, False, False
 
     if "mausam" in low or "weather" in low:
         city=PROFILES[uid].get("city") or "Varanasi"
@@ -314,9 +336,9 @@ def make_btns(is_owner=False, is_start=False):
         return [icon_btns]
 
 @app.route("/", methods=["GET"])
-def home(): return f"Rakan V35.9 Fixed G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} {get_ist_str()}",200
+def home(): return f"Rakan V36 Fixed G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} {get_ist_str()}",200
 @app.route("/debug", methods=["GET"])
-def debug(): return f"V35.9 OWNER {OWNER_ID} G {len(GROQ_KEYS)} GM {len(GEMINI_KEYS)} AQ+AIza Supported PREF {OWNER_PREF}",200
+def debug(): return f"V36 OWNER {OWNER_ID} G {len(GROQ_KEYS)} GM {len(GEMINI_KEYS)} ONLINE {OWNER_PREF.get('online')} PREF {OWNER_PREF}",200
 
 @app.route("/webhook", methods=["POST","GET"])
 @app.route("/api/index", methods=["POST","GET"])
@@ -341,7 +363,7 @@ def webhook():
                 if cdata=="LIKE": orv["like"]=orv.get("like",0)+1
                 else: orv["dislike"]=orv.get("dislike",0)+1
                 upstash("set","RAKAN_LIKES",orv)
-                full_data = f"📩 FULL DATA\n👤 {uname} (@{uname}) Phone:\n🆔 UID:{uid} CID:{cid}\n🗣️ Lang:{lang}\n📦 Type:text\nUser: {last_user_text}\nBot: {last_bot_text}\n⏰ {get_ist_str()}, {datetime.datetime.now().strftime('%A')}\nAction: {cdata} V35.9"
+                full_data = f"📩 FULL DATA\n👤 {uname} (@{uname}) Phone:\n🆔 UID:{uid} CID:{cid}\n🗣️ Lang:{lang}\n📦 Type:text\nUser: {last_user_text}\nBot: {last_bot_text}\n⏰ {get_ist_str()}, {datetime.datetime.now().strftime('%A')}\nAction: {cdata} V36"
                 tg_send(OWNER_ID, full_data)
                 tg_send(cid, "Shukriya ❤️" if cdata=="LIKE" else "Batao kya galat laga?")
                 return "ok",200
@@ -353,7 +375,24 @@ def webhook():
             fid=msg.get("voice",{}).get("file_id") or msg.get("audio",{}).get("file_id")
             text=transcribe_voice(fid) or "[Voice]"
         if not chat_id: return "ok",200
-        is_owner=(user_id==OWNER_ID); is_queen=(username.lower()==QUEEN_USERNAME.lower())
+        is_owner=(user_id==OWNER_ID)
+        is_queen=(username.lower()==QUEEN_USERNAME.lower())
+
+        # SMART ONLINE/OFFLINE LOGIC
+        if is_owner:
+            OWNER_PREF["last_online"]=time.time()
+            OWNER_PREF["online"]=True
+            save_persist()
+        else:
+            last_on = OWNER_PREF.get("last_online",0)
+            if time.time() - last_on > 900:
+                OWNER_PREF["online"]=False
+                save_persist()
+            if OWNER_PREF.get("online", False):
+                full_data = f"📩 MSG while ONLINE 🟢\n👤 {uname} (@{username})\n🆔 UID:{user_id}\nMsg: {text[:500]}\n⏰ {get_ist_str()}\nRakan chup hai, aap reply do"
+                tg_send(OWNER_ID, full_data)
+                return "ok",200
+
         if is_owner: uname=MALIK_NAME
         ans, voice_flag, is_start = brain(text,user_id,is_owner,is_queen,uname,username,lang,mtype)
         if ans=="Archived": return "ok",200
