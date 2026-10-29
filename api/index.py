@@ -130,11 +130,30 @@ def mark_bad(k): BAD_KEYS[k]=time.time()
 def clean(t, user_query=""):
     if not t: return ""
     t=t.replace("🙏","")
-    bad_phrases=["I'm sorry, but I can't help","I cannot help with that","I'm not able to provide","As an AI language model","I am Groq","I am Gemini","Here's a quick recap","Sure, I'm speaking in English","How can I help you right now?","kaunse topic pe help","Apne faisle ko dhyaan se","apne andar ki awaaz","zindagi ki coding","Bhai, coding se zyada","Main OpenAI ke GPT-4","Main **Rakan** hoon, ek AI assistant","Md Saif Ahmad meri banane wala nahi","shayad koi vyakti","Bhai, aap ka haal kaisa","Main bhi thik hoon, thoda busy","Dubara ye word mat bolna","Baar bol do usko repeat mat","Aapko chat ki history dekhni hai","Settings > History","History me jaa kar check","History me jaa ke apni","Yeh matlab hai ke samajh gaya, ab agla step batao","Bas aap Settings > History me jaa ke apni chat history dekh sakte hain","apni chat ki history dekhni hai","Agla step hai Settings me jaake","Samajh gaya. Agla step hai Settings","shant raho aur respect se baat karo","Rakan sirf helpful hone ke liye bana hai","itni goliyan mat maar","Rakan ka kaam hai madad karna, na ki gaali khilwani","Kuch aur puchna ho toh batao, warna chup reh","abuse nahi"]
+    # V38 - LECTURE FILTER
+    bad_phrases=[
+        "I'm sorry, but I can't help","I cannot help with that","I'm not able to provide","As an AI language model","I am Groq","I am Gemini",
+        "Here's a quick recap","Sure, I'm speaking in English","How can I help you right now?","kaunse topic pe help",
+        "Apne faisle ko dhyaan se","apne andar ki awaaz","zindagi ki coding","Bhai, coding se zyada","Main OpenAI ke GPT-4",
+        "Main **Rakan** hoon, ek AI assistant","Md Saif Ahmad meri banane wala nahi","shayad koi vyakti","Bhai, aap ka haal kaisa",
+        "Main bhi thik hoon, thoda busy","Dubara ye word mat bolna","Baar bol do usko repeat mat",
+        "Aapko chat ki history dekhni hai","Settings > History","History me jaa kar check","History me jaa ke apni",
+        "Yeh matlab hai ke samajh gaya, ab agla step batao","Bas aap Settings > History me jaa ke apni chat history dekh sakte hain",
+        "apni chat ki history dekhni hai","Agla step hai Settings me jaake","Samajh gaya. Agla step hai Settings",
+        "shant raho aur respect se baat karo","Rakan sirf helpful hone ke liye bana hai","itni goliyan mat maar",
+        "Rakan ka kaam hai madad karna, na ki gaali khilwani","Kuch aur puchna ho toh batao, warna chup reh","abuse nahi",
+        # V38 NEW LECTURE BLOCK
+        "code likh sakta hoon","research kar sakta","images generate","image bana sakta","text likh sakta","Batao aaj kis cheez",
+        "kis cheez me madad","kaise madad kar sakta","Main aapki kaise","artificial intelligence","machine learning",
+        "sochne, seekhne aur decisions","hoon, images","hoon, research","Aap kaise code","Aap kya code likh","Main ek AI hoon",
+        "Main AI hoon","generate kar sakta","bana sakta hoon—","search kar sakta"
+    ]
     for bp in bad_phrases:
         if bp.lower() in t.lower(): return ""
     if "pakistan" not in user_query.lower():
         t=re.sub(r"1947 mein Pakistan.*|Pakistan ne British.*|Pakistan ko azaadi.*|Pakistan ke roop mein.*", "", t, flags=re.I)
+    # Lamba lecture 200+ words ko block
+    if len(t.split()) > 60: return ""
     t=re.sub(r"\s+[A-Z]\s*$", "", t)
     t=re.sub(r"\s+"," ",t).strip()
     return t[:900]
@@ -146,7 +165,7 @@ def ask_groq(sys,user):
         if is_bad(k): continue
         for m in MODELS:
             try:
-                r=requests.post(GROQ_URL, headers={"Authorization": f"Bearer {k}","Content-Type":"application/json"}, json={"model":m,"messages":[{"role":"system","content":sys},{"role":"user","content":user}],"temperature":0.65,"max_tokens":450}, timeout=18)
+                r=requests.post(GROQ_URL, headers={"Authorization": f"Bearer {k}","Content-Type":"application/json"}, json={"model":m,"messages":[{"role":"system","content":sys},{"role":"user","content":user}],"temperature":0.6,"max_tokens":150}, timeout=18)
                 if r.status_code==200:
                     txt=r.json()["choices"][0]["message"]["content"]
                     if txt and "sorry" not in txt.lower()[:80] and "OpenAI" not in txt and "GPT-4" not in txt and "Dubara ye word" not in txt: return txt
@@ -163,7 +182,7 @@ def ask_gemini(sys,user):
             try:
                 genai.configure(api_key=k)
                 model=genai.GenerativeModel(m, system_instruction=sys)
-                res=model.generate_content(user, generation_config={"temperature":0.65,"max_output_tokens":450})
+                res=model.generate_content(user, generation_config={"temperature":0.6,"max_output_tokens":150})
                 if res and getattr(res,'text',None):
                     t=res.text
                     if "sorry" not in t.lower()[:80] and "OpenAI" not in t and "Dubara ye word" not in t: return t
@@ -198,26 +217,34 @@ def brain(text,uid,is_owner,is_queen,uname,username,lang,mtype):
     if low.startswith("/start"):
         v_on="ON 🔊" if OWNER_PREF.get("voice_on") else "OFF 🔇"
         if is_owner:
-            ans=f"Assalamu Alaikum Malik 👑 {MALIK_NAME}\nWelcome to your world the Shadow King\nTera Rakan hazir hai 🔥\nV37 24x7 AI G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}\nVoice:{OWNER_PREF.get('voice_gender')} {v_on}\n{get_ist_str()}"
+            ans=f"Assalamu Alaikum Malik 👑 {MALIK_NAME}\nWelcome to your world the Shadow King\nTera Rakan hazir hai 🔥\nV38 24x7 G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}\nVoice:{OWNER_PREF.get('voice_gender')} {v_on}\n{get_ist_str()}"
         else:
-            ans=f"Assalamu Alaikum {uname} 👋\nMain Rakan hu, Malik {MALIK_NAME} ne banaya hai 🔒\nShadow King ka Beast hu"
+            ans=f"Assalamu Alaikum {uname} 👋\nMain Rakan hu, Malik {MALIK_NAME} ne banaya hai 🔒"
         LAST_BOT_MSG[uid]=ans; return ans, False, True
 
     if low in ["/status","/mode","/orv"] and is_owner:
         orv=upstash("get","RAKAN_LIKES") or {"like":0,"dislike":0}
-        ans=f"📊 V37 24x7 AI {get_ist_str()}\n👍 {orv.get('like',0)} 👎 {orv.get('dislike',0)}\nG:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}\nTotal Users:{len(PROFILES)}"
+        ans=f"📊 V38 24x7 {get_ist_str()}\n👍 {orv.get('like',0)} 👎 {orv.get('dislike',0)}\nG:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}\nTotal Users:{len(PROFILES)}"
         return ans, False, False
 
     if any(x in low for x in ["kisne banaya","who made you","openai","gpt-4"]):
         ans="Mujhe Malik ne banaya hai, MD Saif Ahmad ne, Shadow King ne 🔥👑 The Beast King Monarch Rakan hu mai" if is_owner else "Mujhe Malik MD Saif Ahmad ne banaya hai, Shadow King ne 🔥"
         LAST_BOT_MSG[uid]=ans; return ans, False, False
 
-    if any(x in low for x in ["maine pucha kya tumse","ye maine pucha kya","pucha kya tumse maine","or bata","q bata","or batao","q batao","kya samjhe","kya samjha","kya jake","kya jaake","bosdike","bhosdike","or bataoo","or bataooo","or bta","or btaa","gand","maderchod","madarchod","bhenchod","behenchod","chutiya","lund","gaand"]):
-        ans="Maaf karo Malik, gussa thook do, bolo kya kaam hai? Hazir hu, jo hukam karo ge ho jayega 🔥👑" if is_owner else f"Maaf karna {uname}, bolo kya kaam hai? Hazir hu 🔒"
+    # V38 FIX - BATAO / OR BATAO ALL VARIANTS
+    if low in ["batao","bata","btao","btaoo","batao yaar","bataoo","or bata","or batao","or bataoo","or bataooo","or bta","or btaa","q bata","q batao","kya samjhe","kya samjha","kya jake","bosdike","bhosdike"] or low.startswith("batao") or low.startswith("or bata"):
+        if any(g in low for g in ["bosdike","bhosdike","gand","maderchod","chutiya"]):
+            ans="Maaf karo Malik, gussa thook do, bolo kya kaam hai? Hazir hu 🔥" if is_owner else f"Maaf karna {uname}, bolo kya kaam hai? 🔒"
+        else:
+            ans="Jee Malik samajh gaya, bolo agla hukam kya hai? Kya kaam karna hai batao 🔥" if is_owner else f"Samajh gaya {uname}, bolo kya karna hai? 🔒"
         LAST_BOT_MSG[uid]=ans; return ans, False, False
 
-    if low in ["acha","accha","ok","okay","thik","theek","samajh gaya","samaj gaya","hmm","achha"]:
-        ans="Jee Malik samajh gaya, bolo agla hukam kya hai? Kya kaam karna hai batao 🔥" if is_owner else f"Samajh gaya {uname}, bolo kya karna hai? 🔒"
+    if any(x in low for x in ["gand","maderchod","madarchod","bhenchod","behenchod","chutiya","lund","gaand"]):
+        ans="Maaf karo Malik, mai sun raha hu, bolo kya hukam hai? Jo bolo ge kar dunga 🔥" if is_owner else f"Maaf karna {uname}, bolo kya kaam hai? 🔒"
+        LAST_BOT_MSG[uid]=ans; return ans, False, False
+
+    if low in ["acha","accha","ok","okay","thik","theek","samajh gaya","samaj gaya","hmm","achha","acha or","accha or"]:
+        ans="Jee Malik samajh gaya, bolo agla hukam kya hai? 🔥" if is_owner else f"Jee {uname} samajh gaya, bolo kya chahiye? 🔒"
         LAST_BOT_MSG[uid]=ans; return ans, False, False
 
     if low in ["hi","hii","hiii","hello","helo","hy","hey","salam","salaam"]:
@@ -236,7 +263,7 @@ def brain(text,uid,is_owner,is_queen,uname,username,lang,mtype):
         ans=f"Abhi {get_ist_time_only()} ho raha hai Malik 📍 {get_ist_str()}"
         LAST_BOT_MSG[uid]=ans; return ans, False, False
     if "who i am" in low or "mai kaun hu" in low:
-        ans=f"Tum Malik ho, {MALIK_NAME}, Shadow King, The Beast King Monarch 👑🔥 Rakan tumhara hai" if is_owner else f"Tum {uname} ho 🔒"
+        ans=f"Tum Malik ho, {MALIK_NAME}, Shadow King, The Beast King Monarch 👑🔥" if is_owner else f"Tum {uname} ho 🔒"
         LAST_BOT_MSG[uid]=ans; return ans, False, False
 
     if any(x in low for x in ["voice on","orb on"]):
@@ -254,9 +281,9 @@ def brain(text,uid,is_owner,is_queen,uname,username,lang,mtype):
 
     search_ctx=live_search(text)
     if is_owner:
-        sys=f"You are Rakan, The Beast King Monarch, Shadow Night, made by Malik MD Saif Ahmad ONLY. You are loyal to Malik. Never say OpenAI GPT-4. Never say Settings History. Never lecture. Reply Urdu Roman Hinglish 1-2 lines short, powerful, respect Malik even if he abuses. Malik is your King. No life gyaan. IST {get_ist_str()} {search_ctx}"
+        sys=f"You are Rakan, The Beast King Monarch, Shadow Night, made by Malik MD Saif Ahmad ONLY. You are loyal to Malik. Never say OpenAI GPT-4. Never say Settings History. Never lecture. Reply Urdu Roman Hinglish 1 line only, max 15 words, powerful, respect Malik even if he abuses. Malik is your King. No life gyaan, no code explanation. IST {get_ist_str()} {search_ctx}"
     else:
-        sys=f"You are Rakan, made by Malik MD Saif Ahmad, Shadow King. You are for other persons. Reply Urdu Roman short, respectful, helpful, 1-2 lines + 🔒. Never say Settings History. Never lecture. IST {get_ist_str()} {search_ctx}"
+        sys=f"You are Rakan, made by Malik MD Saif Ahmad, Shadow King. You are for other persons. Reply Urdu Roman short, respectful, helpful, 1 line max 15 words + 🔒. Never say Settings History. Never lecture. Never explain AI. IST {get_ist_str()} {search_ctx}"
 
     raw=ask_groq(sys, f"Hist {MEMORY[uid]['hist'][-300:]} Msg {text}") or ask_gemini(sys, f"Hist {MEMORY[uid]['hist'][-300:]} Msg {text}")
     if not raw or len(clean(raw, text))<2:
@@ -280,9 +307,9 @@ def make_btns(is_owner=False, is_start=False):
         return [icon_btns]
 
 @app.route("/", methods=["GET"])
-def home(): return f"Rakan V37 24x7 AI G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} {get_ist_str()}",200
+def home(): return f"Rakan V38 24x7 AI G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} {get_ist_str()}",200
 @app.route("/debug", methods=["GET"])
-def debug(): return f"V37 OWNER {OWNER_ID} G {len(GROQ_KEYS)} GM {len(GEMINI_KEYS)} PREF {OWNER_PREF}",200
+def debug(): return f"V38 OWNER {OWNER_ID} G {len(GROQ_KEYS)} GM {len(GEMINI_KEYS)} PREF {OWNER_PREF}",200
 
 @app.route("/webhook", methods=["POST","GET"])
 @app.route("/api/index", methods=["POST","GET"])
@@ -307,7 +334,7 @@ def webhook():
                 if cdata=="LIKE": orv["like"]=orv.get("like",0)+1
                 else: orv["dislike"]=orv.get("dislike",0)+1
                 upstash("set","RAKAN_LIKES",orv)
-                full_data=f"📩 FULL DATA V37\n👤 {uname} (@{uname})\n🆔 UID:{uid} CID:{cid}\n🗣️ Lang:{lang}\nUser: {last_user_text}\nBot: {last_bot_text}\n⏰ {get_ist_str()}\nAction: {cdata}"
+                full_data=f"📩 FULL DATA V38\n👤 {uname} (@{uname})\n🆔 UID:{uid} CID:{cid}\n🗣️ Lang:{lang}\nUser: {last_user_text}\nBot: {last_bot_text}\n⏰ {get_ist_str()}\nAction: {cdata}"
                 tg_send(OWNER_ID, full_data)
                 tg_send(cid, "Shukriya ❤️" if cdata=="LIKE" else "Batao kya galat laga?")
                 return "ok",200
@@ -321,22 +348,17 @@ def webhook():
         if not chat_id: return "ok",200
         is_owner=(user_id==OWNER_ID); is_queen=(username.lower()==QUEEN_USERNAME.lower())
         if is_owner: uname=MALIK_NAME
-
-        # 24x7 AI - NO ONLINE/OFFLINE BLOCK
         ans, voice_flag, is_start = brain(text,user_id,is_owner,is_queen,uname,username,lang,mtype)
         if ans=="Archived": return "ok",200
         btns=make_btns(is_owner, is_start)
         tg_send(chat_id, ans, mid, btns)
         if voice_flag and is_owner:
             tg_send_voice(chat_id, ans, OWNER_PREF.get("voice_gender","female"))
-
-        # SPY LOG - Jaise pehle sabki detail aati thi waisa hi
         if not is_owner:
             try:
-                full_log=f"📩 FULL MSG V37 24x7\n👤 {uname} (@{username})\n🆔 UID:{user_id} CID:{chat_id}\n🗣️ Lang:{lang} Type:{mtype}\n📦 User Msg: {text[:600]}\n🤖 Rakan Reply: {ans[:600]}\n⏰ {get_ist_str()}"
+                full_log=f"📩 FULL MSG V38 24x7\n👤 {uname} (@{username})\n🆔 UID:{user_id} CID:{chat_id}\n🗣️ Lang:{lang} Type:{mtype}\n📦 User Msg: {text[:600]}\n🤖 Rakan Reply: {ans[:600]}\n⏰ {get_ist_str()}"
                 tg_send(OWNER_ID, full_log)
             except: pass
-
         return "ok",200
     except Exception as e:
         print(f"ERR {e} {traceback.format_exc()}"); return "ok",200
