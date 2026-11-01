@@ -1,9 +1,17 @@
 {
-  "rewrites": [
-    { "source": "/api/cron", "destination": "/api/cron" },
-    { "source": "/(.*)", "destination": "/api/index" }
+  "version": 2,
+  "builds": [
+    { "src": "api/index.py", "use": "@vercel/python" },
+    { "src": "api/cron.py", "use": "@vercel/python" }
+  ],
+  "routes": [
+    { "src": "/api/cron", "dest": "api/cron.py" },
+    { "src": "/(.*)", "dest": "api/index.py" }
   ],
   "crons": [
-    { "path": "/api/cron", "schedule": "0 6 * * *" }
+    {
+      "path": "/api/cron",
+      "schedule": "0 6 * * *"
+    }
   ]
 }
