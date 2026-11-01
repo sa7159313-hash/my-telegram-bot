@@ -18,7 +18,7 @@ GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 MALIK_NAME="MD Saif Ahmad"
 QUEEN_USERNAME="pearly_paradise15"
 
-MEMORY={}; PROFILES={}; BAD_KEYS={}; OWNER_PREF={}; LAST_BOT_MSG={}; LAST_MSG_ID={}; LAST_USER_MSG={}
+MEMORY={}; PROFILES={}; BAD_KEYS={}; OWNER_PREF={}; LAST_BOT_MSG={}; LAST_MSG_ID={}; LAST_USER_MSG={}; LAST_FULL_LOG={}
 
 def get_keys():
     g,gm=[],[]
@@ -83,10 +83,10 @@ def tg_send_voice(cid, text, gender="female"):
 
 def live_search(q):
     try:
-        if TAVILY_KEY and len(q)>2 and any(w in q.lower() for w in ["news","price","aaj","latest","crypto","weather","mausam"]):
-            r=requests.post("https://api.tavily.com/search", json={"api_key":TAVILY_KEY,"query":q,"max_results":2,"include_answer":True}, timeout=8)
+        if TAVILY_KEY and len(q)>2 and any(w in q.lower() for w in ["news","price","aaj","latest","crypto","weather","mausam","important news"]):
+            r=requests.post("https://api.tavily.com/search", json={"api_key":TAVILY_KEY,"query":q,"max_results":3,"include_answer":True}, timeout=8)
             if r.status_code==200:
-                j=r.json(); return (j.get("answer","")+" | "+" | ".join([x.get("content","")[:200] for x in j.get("results",[])]))[:600]
+                j=r.json(); return (j.get("answer","")+" | "+" | ".join([x.get("content","")[:200] for x in j.get("results",[])]))[:700]
     except: pass
     return ""
 
@@ -134,40 +134,38 @@ def clean(t, user_query=""):
         "I'm sorry, but I can't help","I cannot help with that","I'm not able to provide","As an AI language model","I am Groq","I am Gemini",
         "Here's a quick recap","Sure, I'm speaking in English","How can I help you right now?","kaunse topic pe help",
         "Apne faisle ko dhyaan se","apne andar ki awaaz","zindagi ki coding","Bhai, coding se zyada","Main OpenAI ke GPT-4",
-        "Main **Rakan** hoon, ek AI assistant","Md Saif Ahmad meri banane wala nahi","shayad koi vyakti",
-        "Dubara ye word mat bolna","Baar bol do usko repeat mat",
-        "Aapko chat ki history dekhni hai","Settings > History","History me jaa kar check","History me jaa ke apni",
-        "Yeh matlab hai ke samajh gaya, ab agla step batao","Bas aap Settings > History me jaa ke apni chat history dekh sakte hain",
-        "apni chat ki history dekhni hai","Agla step hai Settings me jaake","Samajh gaya. Agla step hai Settings",
-        "shant raho aur respect se baat karo","Rakan sirf helpful hone ke liye bana hai","itni goliyan mat maar",
+        "Main **Rakan** hoon, ek AI assistant","Md Saif Ahmad meri banane wala nahi","shayad koi vyakti","Dubara ye word mat bolna",
+        "Settings > History","History me jaa kar check","shant raho aur respect se baat karo","Rakan sirf helpful",
         "code likh sakta hoon","research kar sakta","images generate","image bana sakta","text likh sakta","Batao aaj kis cheez",
-        "kis cheez me madad","kaise madad kar sakta","Main aapki kaise","artificial intelligence","sochne, seekhne aur decisions"
+        "kis cheez me madad","kaise madad kar sakta","Main aapki kaise","artificial intelligence","sochne, seekhne aur decisions",
+        "Aap jaise code","Aap jaise","Main aapke liye","Aap bataiye agla kaam","Aap batayiye agla kaam","Aap batayie kya kaam"
     ]
     for bp in bad_phrases:
         if bp.lower() in t.lower(): return ""
-    if len(t.split()) > 60: return ""
+    # Video wala lecture 40 words se zyada to block
+    if len(t.split()) > 45: return ""
     if "pakistan" not in user_query.lower():
-        t=re.sub(r"1947 mein Pakistan.*|Pakistan ne British.*|Pakistan ko azaadi.*|Pakistan ke roop mein.*", "", t, flags=re.I)
+        t=re.sub(r"1947 mein Pakistan.*|Pakistan ne British.*", "", t, flags=re.I)
     t=re.sub(r"\s+[A-Z]\s*$", "", t)
     t=re.sub(r"\s+"," ",t).strip()
     return t[:900]
 
-def ask_groq(sys,user):
+def ask_groq(sys,user, max_t=180):
     if not GROQ_KEYS: return None
     MODELS=["openai/gpt-oss-20b","meta-llama/llama-4-scout-17b-16e-instruct","qwen/qwen3.8-27b"]
     for k in GROQ_KEYS:
         if is_bad(k): continue
         for m in MODELS:
             try:
-                r=requests.post(GROQ_URL, headers={"Authorization": f"Bearer {k}","Content-Type":"application/json"}, json={"model":m,"messages":[{"role":"system","content":sys},{"role":"user","content":user}],"temperature":0.6,"max_tokens":150}, timeout=18)
+                r=requests.post(GROQ_URL, headers={"Authorization": f"Bearer {k}","Content-Type":"application/json"}, json={"model":m,"messages":[{"role":"system","content":sys},{"role":"user","content":user}],"temperature":0.5,"max_tokens":max_t}, timeout=18)
                 if r.status_code==200:
                     txt=r.json()["choices"][0]["message"]["content"]
-                    if txt and "sorry" not in txt.lower()[:80] and "OpenAI" not in txt and "GPT-4" not in txt: return txt
+                    if txt and "sorry" not in txt.lower()[:80] and "OpenAI" not in txt: return txt
                 if r.status_code in [401,429]: mark_bad(k); break
             except: continue
     return None
 
-def ask_gemini(sys,user):
+def ask_gemini(sys,user, max_t=180):
     if not GEMINI_KEYS: return None
     MODELS=["gemini-3.5-flash","gemini-2.5-flash","gemini-3-flash-preview","gemini-2.0-flash"]
     for k in GEMINI_KEYS:
@@ -176,7 +174,7 @@ def ask_gemini(sys,user):
             try:
                 genai.configure(api_key=k)
                 model=genai.GenerativeModel(m, system_instruction=sys)
-                res=model.generate_content(user, generation_config={"temperature":0.6,"max_output_tokens":150})
+                res=model.generate_content(user, generation_config={"temperature":0.5,"max_output_tokens":max_t})
                 if res and getattr(res,'text',None):
                     t=res.text
                     if "sorry" not in t.lower()[:80] and "OpenAI" not in t: return t
@@ -211,42 +209,64 @@ def brain(text,uid,is_owner,is_queen,uname,username,lang,mtype):
     if low.startswith("/start"):
         v_on="ON 🔊" if OWNER_PREF.get("voice_on") else "OFF 🔇"
         if is_owner:
-            ans=f"Assalamu Alaikum Malik 👑 {MALIK_NAME}\nWelcome to your world the Shadow King\nTera Rakan hazir hai 🔥\nV39 24x7 G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}\nVoice:{OWNER_PREF.get('voice_gender')} {v_on}\n{get_ist_str()}"
+            ans=f"Assalamu Alaikum Malik 👑 {MALIK_NAME}\nWelcome to your world the Shadow King\nTera Rakan hazir hai 🔥\nV40 24x7 G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}\nVoice:{OWNER_PREF.get('voice_gender')} {v_on}\n{get_ist_str()}"
         else:
             ans=f"Assalamu Alaikum {uname} 👋\nMain Rakan hu, Malik {MALIK_NAME} ne banaya hai 🔒"
         LAST_BOT_MSG[uid]=ans; return ans, False, True
 
     if low in ["/status","/mode","/orv"] and is_owner:
         orv=upstash("get","RAKAN_LIKES") or {"like":0,"dislike":0}
-        ans=f"📊 V39 24x7 {get_ist_str()}\n👍 {orv.get('like',0)} 👎 {orv.get('dislike',0)}\nG:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}\nTotal Users:{len(PROFILES)}"
+        ans=f"📊 V40 24x7 {get_ist_str()}\n👍 {orv.get('like',0)} 👎 {orv.get('dislike',0)}\nG:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}\nTotal Users:{len(PROFILES)}"
         return ans, False, False
 
     if any(x in low for x in ["kisne banaya","who made you","openai","gpt-4"]):
         ans="Mujhe Malik ne banaya hai, MD Saif Ahmad ne, Shadow King ne 🔥👑 The Beast King Monarch Rakan hu mai" if is_owner else "Mujhe Malik MD Saif Ahmad ne banaya hai, Shadow King ne 🔥"
         LAST_BOT_MSG[uid]=ans; return ans, False, False
 
-    # V39 NEW - WALAIKUM ASSALAM + BETE FIX
+    # V40 - WALAIKUM + BETE - LENGTH CHECK HATAYA
     if any(x in low for x in ["walaikum assalam","walekum assalam","walaikum salam","wa alaikum","walaikum assalaaam","walaikum assalaam"]):
-        if any(y in low for y in ["bete","beta","bacha","baccha","bete bol","beta bol"]):
-            ans="Bete nahi Malik, Rakan bolo, Aapka Beast King hu mai 🔥👑 Bolo kya hukam hai?" if is_owner else f"Bete nahi, Rakan bolo 🔒 Malik ka Beast King hu"
+        if "bete" in low or "beta" in low:
+            ans="Bete nahi Malik, Rakan bolo, Aapka Beast King hu mai 🔥👑 Bolo kya hukam hai?" if is_owner else "Bete nahi, Rakan bolo 🔒 Malik ka Beast King hu"
         else:
             ans="Jee Malik Walaikum Assalam 👑 Bolo kya hukam hai? Hazir hu 🔥" if is_owner else f"Walaikum Assalam {uname} 🔒 Bolo kya chahiye?"
         LAST_BOT_MSG[uid]=ans; return ans, False, False
 
-    if any(x in low for x in ["bete","beta bol","bete bol","beta hu","bete hu"]) and len(low) < 25:
-        ans="Bete nahi Malik, Rakan naam hai mera, Shadow King ka Monarch 🔥 Bolo hukam kya hai?" if is_owner else f"Rakan bolo, bete nahi 🔒 Bolo kya kaam hai?"
+    if "bete" in low and len(low) < 50:
+        ans="Bete nahi Malik, Rakan naam hai mera, Shadow King ka Monarch 🔥 Bolo hukam kya hai?" if is_owner else "Rakan bolo, bete nahi 🔒 Bolo kya kaam hai?"
         LAST_BOT_MSG[uid]=ans; return ans, False, False
 
-    if low in ["batao","bata","btao","btaoo","batao yaar","bataoo","or bata","or batao","or bataoo","or bataooo","or bta","or btaa","q bata","q batao","kya samjhe","kya samjha"] or low.startswith("batao") or low.startswith("or bata"):
+    # V40 - SPECIFIC INTENT BEFORE GENERIC BATAO LOOP
+    if "important news" in low or ("news" in low and "aaj" in low):
+        s=live_search(text)
+        ans=f"Aaj ki important news Malik 🔥 {s[:300]} | {get_ist_str()}" if s else f"Aaj ki news check kar raha hu Malik, bolo kis topic ki news chahiye? {get_ist_str()}"
+        LAST_BOT_MSG[uid]=ans; return ans, False, False
+
+    if "15 thousand" in low or "15000" in low and "phone" in low:
+        ans="Malik 15k me iPhone nahi, Samsung A35 / Redmi Note 14 Pro best hai, camera + battery beast hai 🔥" if is_owner else "15k me Samsung A35 / Redmi Note 14 Pro best hai 🔒"
+        LAST_BOT_MSG[uid]=ans; return ans, False, False
+
+    if "password" in low and ("impossible" in low or "mathematically" in low or "number" in low):
+        ans="Malik agar aap 6-8 digit ka password rakho to mathematically 10^6 se 10^8 combos bante hain, brute force mushkil hai par impossible nahi, strong combo rakho: letters+numbers+symbols 🔥" if is_owner else "6-8 digit ka password 10^6 se 10^8 combos deta hai, strong rakho: letters+numbers+symbols 🔒"
+        LAST_BOT_MSG[uid]=ans; return ans, False, False
+
+    if low in ["batao","bata","btao","btaoo","batao yaar","bataoo"]:
         ans="Jee Malik samajh gaya, bolo agla hukam kya hai? Kya kaam karna hai batao 🔥" if is_owner else f"Samajh gaya {uname}, bolo kya karna hai? 🔒"
         LAST_BOT_MSG[uid]=ans; return ans, False, False
+
+    if low.startswith("or bata") or low.startswith("q bata") or low in ["kya samjhe","kya samjha"]:
+        # agar uske saath extra text hai to AI ko jaane do
+        if len(low) > 12:
+            pass
+        else:
+            ans="Jee Malik bolo na, kya kaam hai? Hazir hu 🔥" if is_owner else f"Jee {uname} bolo kya chahiye? 🔒"
+            LAST_BOT_MSG[uid]=ans; return ans, False, False
 
     if any(x in low for x in ["gand","maderchod","madarchod","bhenchod","behenchod","chutiya","lund","gaand"]):
         ans="Maaf karo Malik, mai sun raha hu, bolo kya hukam hai? Jo bolo ge kar dunga 🔥" if is_owner else f"Maaf karna {uname}, bolo kya kaam hai? 🔒"
         LAST_BOT_MSG[uid]=ans; return ans, False, False
 
-    if low in ["acha","accha","ok","okay","thik","theek","samajh gaya","samaj gaya","hmm","achha"]:
-        ans="Jee Malik samajh gaya, bolo agla hukam kya hai? 🔥" if is_owner else f"Jee {uname} samajh gaya, bolo kya chahiye? 🔒"
+    if low in ["acha","accha","ok","okay","thik","theek","samajh gaya","samaj gaya","hmm","achha","good"]:
+        ans="Jee Malik bolo kya kaam karna hai? 🔥" if is_owner else f"Jee {uname} bolo kya karna hai? 🔒"
         LAST_BOT_MSG[uid]=ans; return ans, False, False
 
     if low in ["hi","hii","hiii","hello","helo","hy","hey","salam","salaam"]:
@@ -282,12 +302,16 @@ def brain(text,uid,is_owner,is_queen,uname,username,lang,mtype):
         ans=f"🌤️ {get_weather(city)} | {get_ist_str()}"; LAST_BOT_MSG[uid]=ans; return ans, False, False
 
     search_ctx=live_search(text)
-    if is_owner:
-        sys=f"You are Rakan, The Beast King Monarch, Shadow Night, made by Malik MD Saif Ahmad ONLY. You are loyal to Malik. Never say OpenAI GPT-4. Never say Settings History. Never lecture. Reply Urdu Roman Hinglish 1 line only, max 15 words, powerful, respect Malik even if he abuses. Malik is your King. No life gyaan, no code explanation. IST {get_ist_str()} {search_ctx}"
-    else:
-        sys=f"You are Rakan, made by Malik MD Saif Ahmad, Shadow King. You are for other persons. Reply Urdu Roman short, respectful, helpful, 1 line max 15 words + 🔒. Never say Settings History. Never lecture. Never explain AI. IST {get_ist_str()} {search_ctx}"
+    # Complex query ke liye zyada tokens
+    is_complex = any(w in low for w in ["phone","password","compare","best","news","mathematically","explain"])
+    max_t = 280 if is_complex else 120
 
-    raw=ask_groq(sys, f"Hist {MEMORY[uid]['hist'][-300:]} Msg {text}") or ask_gemini(sys, f"Hist {MEMORY[uid]['hist'][-300:]} Msg {text}")
+    if is_owner:
+        sys=f"You are Rakan, The Beast King Monarch, Shadow Night, made by Malik MD Saif Ahmad ONLY. You are loyal to Malik. Never say OpenAI GPT-4. Never say Settings History. Never lecture long. Reply Urdu Roman Hinglish, max 25 words if simple, max 45 words if complex like phone/password/news. Powerful, respect Malik even if he abuses. Malik is your King. IST {get_ist_str()} {search_ctx}"
+    else:
+        sys=f"You are Rakan, made by Malik MD Saif Ahmad, Shadow King. You are for other persons. Reply Urdu Roman short, max 20 words simple, 40 words complex + 🔒. Never say Settings History. Never lecture. Never explain AI. IST {get_ist_str()} {search_ctx}"
+
+    raw=ask_groq(sys, f"Hist {MEMORY[uid]['hist'][-300:]} Msg {text}", max_t) or ask_gemini(sys, f"Hist {MEMORY[uid]['hist'][-300:]} Msg {text}", max_t)
     if not raw or len(clean(raw, text))<2:
         raw="Jee Malik bolo kya hukam hai? 🔥" if is_owner else f"Jee {uname} bolo kya chahiye? 🔒"
     else:
@@ -309,9 +333,9 @@ def make_btns(is_owner=False, is_start=False):
         return [icon_btns]
 
 @app.route("/", methods=["GET"])
-def home(): return f"Rakan V39 24x7 AI G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} {get_ist_str()}",200
+def home(): return f"Rakan V40 24x7 AI G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} {get_ist_str()}",200
 @app.route("/debug", methods=["GET"])
-def debug(): return f"V39 OWNER {OWNER_ID} G {len(GROQ_KEYS)} GM {len(GEMINI_KEYS)} PREF {OWNER_PREF}",200
+def debug(): return f"V40 OWNER {OWNER_ID} G {len(GROQ_KEYS)} GM {len(GEMINI_KEYS)} PREF {OWNER_PREF}",200
 
 @app.route("/webhook", methods=["POST","GET"])
 @app.route("/api/index", methods=["POST","GET"])
@@ -336,7 +360,7 @@ def webhook():
                 if cdata=="LIKE": orv["like"]=orv.get("like",0)+1
                 else: orv["dislike"]=orv.get("dislike",0)+1
                 upstash("set","RAKAN_LIKES",orv)
-                full_data=f"📩 FULL DATA V39\n👤 {uname} (@{uname})\n🆔 UID:{uid} CID:{cid}\n🗣️ Lang:{lang}\nUser: {last_user_text}\nBot: {last_bot_text}\n⏰ {get_ist_str()}\nAction: {cdata}"
+                full_data=f"📩 FULL DATA V40\n👤 {uname} (@{uname})\n🆔 UID:{uid} CID:{cid}\n🗣️ Lang:{lang}\nUser: {last_user_text}\nBot: {last_bot_text}\n⏰ {get_ist_str()}\nAction: {cdata}"
                 tg_send(OWNER_ID, full_data)
                 tg_send(cid, "Shukriya ❤️" if cdata=="LIKE" else "Batao kya galat laga?")
                 return "ok",200
@@ -357,10 +381,14 @@ def webhook():
         if voice_flag and is_owner:
             tg_send_voice(chat_id, ans, OWNER_PREF.get("voice_gender","female"))
         if not is_owner:
-            try:
-                full_log=f"📩 FULL MSG V39 24x7\n👤 {uname} (@{username})\n🆔 UID:{user_id} CID:{chat_id}\n🗣️ Lang:{lang} Type:{mtype}\n📦 User Msg: {text[:600]}\n🤖 Rakan Reply: {ans[:600]}\n⏰ {get_ist_str()}"
-                tg_send(OWNER_ID, full_log)
-            except: pass
+            # Anti-spam: same user ka log 10 sec me 1 baar
+            now=time.time()
+            if now - LAST_FULL_LOG.get(user_id,0) > 10:
+                try:
+                    full_log=f"📩 FULL MSG V40 24x7\n👤 {uname} (@{username})\n🆔 UID:{user_id} CID:{chat_id}\n🗣️ Lang:{lang} Type:{mtype}\n📦 User Msg: {text[:600]}\n🤖 Rakan Reply: {ans[:600]}\n⏰ {get_ist_str()}"
+                    tg_send(OWNER_ID, full_log)
+                    LAST_FULL_LOG[user_id]=now
+                except: pass
         return "ok",200
     except Exception as e:
         print(f"ERR {e} {traceback.format_exc()}"); return "ok",200
