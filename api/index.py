@@ -13,12 +13,29 @@ OPENWEATHER_KEY = os.environ.get("OPENWEATHER_API_KEY","")
 TAVILY_KEY = os.environ.get("TAVILY_API_KEY","")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 MALIK_NAME="MD Saif Ahmad"
-MEMORY={}; PROFILES={}; BAD_KEYS={}; OWNER_PREF={}; LAST_BOT_MSG={}; LAST_MSG_ID={}; LAST_USER_MSG={}; LAST_FULL_LOG={}; OWNER_LEARN_TEXT=""; LAST_TOPIC={}; LAST_SALAM={}; LAST_REAL_TOPIC={}
-DEMO_CODE_100 = """# Rakan Demo - 100 Line App
+MEMORY={}; PROFILES={}; BAD_KEYS={}; OWNER_PREF={}; LAST_BOT_MSG={}; LAST_MSG_ID={}; LAST_USER_MSG={}; LAST_FULL_LOG={}; OWNER_LEARN_TEXT=""; LAST_TOPIC={}; LAST_SALAM={}; LAST_REAL_TOPIC={}; SMART_HIST={}; MOOD={}
+# V75 - SMART HIST - 10 baat yaad
+def push_hist(uid, u, b):
+    if uid not in SMART_HIST: SMART_HIST[uid]=[]
+    SMART_HIST[uid].append({"u":u[:120],"b":b[:120],"t":time.time()})
+    SMART_HIST[uid]=SMART_HIST[uid][-10:]
+    try: upstash("set","RAKAN_SMART_V75",SMART_HIST)
+    except: pass
+def get_smart_hist(uid):
+    h=SMART_HIST.get(uid,[])
+    if not h: return ""
+    return " | ".join([f"U:{x['u']} -> R:{x['b']}" for x in h[-6:]])
+def detect_mood(nlow):
+    if any(w in nlow for w in ["gussa","naraz","bakwas","faltu","bore"]): return "gussa"
+    if any(w in nlow for w in ["thak gaya","tired","neend","sleep","nyt","nyy","good night"]): return "thaka"
+    if any(w in nlow for w in ["sad","dukhi","udaas","akela","pareshan","tension","rona"]): return "sad"
+    if any(w in nlow for w in ["mast","maza","badhiya","khush","love","good","great","awesome"]): return "khush"
+    return "normal"
+DEMO_CODE_100 = """# Rakan Demo - 100 Line App - V75 Power
 import datetime, json, random
 class RakanApp:
     def __init__(self, malik="MD Saif Ahmad"):
-        self.malik=malik; self.todos=[]; self.history=[]; self.balance=0
+        self.malik=malik; self.todos=[]; self.history=[]; self.balance=0; self.mood="mast"
     def salam(self): return f"Assalamu Alaikum {self.malik} 👑"
     def add_todo(self, task):
         self.todos.append({"task":task,"done":False,"time":str(datetime.datetime.now())})
@@ -51,6 +68,11 @@ class RakanApp:
         return "Yaad kar liya Malik 👑"
     def billionaire_plan(self): return ["1. AI Agency","2. WhatsApp Bot","3. SaaS 299/month","4. YouTube Daily"]
     def weather(self, city="Naraini"): return f"{city} me mausam mast hai Malik"
+    def mood_check(self, mood):
+        self.mood=mood
+        if mood=="thaka": return "Araam karo Malik, kal phir power se lagenge 🔥"
+        if mood=="gussa": return "Gussa mat karo Malik, main sudhar raha hu"
+        return "Mast ho Malik 🔥"
     def voice_reply(self, txt):
         if "salam" in txt.lower(): return self.salam()
         if "todo" in txt.lower(): return self.show_todos()
@@ -62,7 +84,7 @@ app=RakanApp()
 print(app.salam()); print(app.add_todo("AI Agency shuru karni hai")); print(app.add_todo("YouTube video banana hai"))
 print(app.show_todos()); print(app.add_paisa(1000)); print(app.kharch(299,"SaaS"))
 print("Calc:",app.calc(10,20,"+")); print("Idea:",app.idea("business")); print("Plan:",app.billionaire_plan())
-print(app.voice_reply("salam")); print(app.save()); print("Demo khatam Malik, ye 100 line ka code hai 🔥")
+print(app.mood_check("mast")); print(app.voice_reply("salam")); print(app.save()); print("Demo khatam Malik, V75 Power 🔥")
 """
 def safe(s, n=100):
     try:
@@ -70,8 +92,17 @@ def safe(s, n=100):
         s=str(s); return s[-n:] if len(s)>n else s
     except: return ""
 def normalize(low):
-    low=low.lower()
-    reps={"skte":"sakte","sktay":"sakte","krte":"karte","kr":"kar","bta":"bata","btau":"batao","bataoo":"batao","batao":"batao","kyaa":"kya","acha":"acha","achaa":"acha","hukm":"hukam","hukum":"hukam","bnnna":"banna","bnna":"banna","banna":"banna","billionaire":"billionaire","bilionare":"billionaire","u":"you","ur":"your","wht":"what","powr":"power","powerfull":"powerful","succesfull":"successful","succesful":"successful"}
+    low=low.lower().strip()
+    low=re.sub(r'\bhow\s*r\s*u\b','how are you',low)
+    low=re.sub(r'\bh\s*r\s*u\b','how are you',low)
+    low=re.sub(r'\bhru\b','how are you',low)
+    low=re.sub(r'\bwru\b','what are you doing',low)
+    low=re.sub(r'\bgood\s*nyy\b','good night',low)
+    low=re.sub(r'\bgood\s*nyt\b','good night',low)
+    low=re.sub(r'\bchalo\s*good\s*nyy\b','good night',low)
+    low=re.sub(r'\bchalo\s*good\s*nyt\b','good night',low)
+    low=re.sub(r'\bor\s*batao\b','aur batao',low)
+    reps={"skte":"sakte","sktay":"sakte","krte":"karte","kr":"kar","bta":"bata","btau":"batao","bataoo":"batao","batao":"batao","kyaa":"kya","acha":"acha","achaa":"acha","hukm":"hukam","hukum":"hukam","bnnna":"banna","bnna":"banna","banna":"banna","billionaire":"billionaire","bilionare":"billionaire","u":"you","ur":"your","wht":"what","powr":"power","powerfull":"powerful","succesfull":"successful","succesful":"successful","r":"are","nyy":"night","nyt":"night","gn":"good night","gd":"good","n8":"night","kkrh":"kya kar rahe ho","kkrhe":"kya kar rahe ho","hmm":"hmm","hm":"hmm","ok":"ok"}
     for k,v in reps.items():
         low=re.sub(r'\b'+k+r'\b', v, low)
     low=re.sub(r'\?+','',low); low=re.sub(r'\s+',' ',low).strip()
@@ -205,10 +236,10 @@ def upstash(cmd,key,val=None):
     except: return None
     return None
 def load_persist():
-    global MEMORY,PROFILES,OWNER_PREF,OWNER_LEARN_TEXT,LAST_BOT_MSG,LAST_TOPIC,LAST_REAL_TOPIC
+    global MEMORY,PROFILES,OWNER_PREF,OWNER_LEARN_TEXT,LAST_BOT_MSG,LAST_TOPIC,LAST_REAL_TOPIC,SMART_HIST
     try:
-        MEMORY=upstash("get","RAKAN_MEM_V73") or upstash("get","RAKAN_MEM_V72") or {}
-        PROFILES=upstash("get","RAKAN_PROFILES_V73") or upstash("get","RAKAN_PROFILES_V72") or {}
+        MEMORY=upstash("get","RAKAN_MEM_V75") or upstash("get","RAKAN_MEM_V74") or {}
+        PROFILES=upstash("get","RAKAN_PROFILES_V75") or upstash("get","RAKAN_PROFILES_V74") or {}
         p=upstash("get","RAKAN_PREF")
         if isinstance(p, dict) and p: OWNER_PREF=p
         else: OWNER_PREF={"voice_gender":"female","voice_on":True,"full_log":True}
@@ -217,14 +248,16 @@ def load_persist():
         elif isinstance(learn, str): OWNER_LEARN_TEXT = learn[:2000]
         lbm=upstash("get","RAKAN_LASTBOT_V62") or {}
         if isinstance(lbm, dict): LAST_BOT_MSG=lbm
-        lt=upstash("get","RAKAN_TOPIC_V73") or upstash("get","RAKAN_TOPIC_V66") or {}
+        lt=upstash("get","RAKAN_TOPIC_V73") or {}
         if isinstance(lt, dict): LAST_TOPIC=lt
         rt=upstash("get","RAKAN_REALTOPIC_V73") or {}
         if isinstance(rt, dict): LAST_REAL_TOPIC=rt
+        sh=upstash("get","RAKAN_SMART_V75") or {}
+        if isinstance(sh, dict): SMART_HIST=sh
     except: pass
 load_persist()
 def save_persist():
-    try: upstash("set","RAKAN_MEM_V73",MEMORY); upstash("set","RAKAN_PROFILES_V73",PROFILES); upstash("set","RAKAN_PREF",OWNER_PREF); upstash("set","RAKAN_LASTBOT_V62",LAST_BOT_MSG); upstash("set","RAKAN_TOPIC_V73",LAST_TOPIC); upstash("set","RAKAN_REALTOPIC_V73",LAST_REAL_TOPIC)
+    try: upstash("set","RAKAN_MEM_V75",MEMORY); upstash("set","RAKAN_PROFILES_V75",PROFILES); upstash("set","RAKAN_PREF",OWNER_PREF); upstash("set","RAKAN_LASTBOT_V62",LAST_BOT_MSG); upstash("set","RAKAN_TOPIC_V73",LAST_TOPIC); upstash("set","RAKAN_REALTOPIC_V73",LAST_REAL_TOPIC); upstash("set","RAKAN_SMART_V75",SMART_HIST)
     except: pass
 def save_learn(new_text):
     global OWNER_LEARN_TEXT
@@ -313,7 +346,7 @@ def brain(text,uid,is_owner,is_queen,uname,username,lang,mtype,cid,photo_file_id
     except Exception as e:
         print(f"BRAIN ERR {e}"); return "Samajh gaya, bolo kya karna hai? 🔥", False, False
 def brain_inner(text,uid,is_owner,is_queen,uname,username,lang,mtype,cid,photo_file_id=None, reply_to_text=""):
-    global MEMORY,PROFILES,LAST_BOT_MSG,LAST_USER_MSG,OWNER_LEARN_TEXT,LAST_TOPIC,LAST_SALAM,LAST_REAL_TOPIC
+    global MEMORY,PROFILES,LAST_BOT_MSG,LAST_USER_MSG,OWNER_LEARN_TEXT,LAST_TOPIC,LAST_SALAM,LAST_REAL_TOPIC,MOOD
     if not text: text=""
     text=str(text); uid=str(uid)
     if uid not in MEMORY or not isinstance(MEMORY.get(uid), dict): MEMORY[uid]={"hist":""}
@@ -323,128 +356,197 @@ def brain_inner(text,uid,is_owner,is_queen,uname,username,lang,mtype,cid,photo_f
     prof=PROFILES[uid]
     if is_owner: display_name=MALIK_NAME; call="Malik"
     else: display_name=prof.get("custom_name") or uname or "Dost"; call="Dost"
-    # V73 - REPLY CONTEXT - Back Reply kiya to uska text bhi jodo
+    mood=detect_mood(nlow); MOOD[uid]=mood
     reply_nlow=normalize(reply_to_text or "")
-    # V73 - FOLLOW-UP DETECT - Bina Reply ke bhi pichhli baat samjho
-    is_followup = any(p in nlow for p in ["reality me","real me","sach me","sach me batao","asli me","reality","sach batao","or batao","aur batao","or","phir","aage","koun hai","kaun hai","kisne","kab","kaha","kaise","kyu","kyun","kya matlab","samajh nahi"])
-    # Agar followup hai aur naya topic nahi hai, to pichhla topic use karo
+    # V75 - MOOD + GOOD NIGHT - Sabse upar
+    if "good night" in nlow or nlow in ["night","nyt","nyy","gn"]:
+        LAST_REAL_TOPIC[uid]="good_night"; save_persist()
+        ans=f"Good Night {call} 🌙 Allah Hafiz, araam se so jao. Kal milte hai, naye hukam ke saath 🔥"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+    if "how are you" in nlow:
+        LAST_REAL_TOPIC[uid]="haal"; save_persist()
+        ans=f"Alhamdulillah {call}, main ekdum mast hu, tum sunao kya haal hai? 🔥"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+    if "what are you doing" in nlow or "kya kar rahe ho" in nlow:
+        ans=f"Bas aapke hukam ka intezar kar raha hu {call} 👑 Bolo kya kaam hai?"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+    # V75 - Hmm / Ok / Acha pe bhi pichli baat continue
+    if nlow in ["hmm","hm","ok","okk","acha","accha","theek hai","thik hai","sahi hai","good","nice"]:
+        prev=LAST_REAL_TOPIC.get(uid,"")
+        if prev=="powerful_ai":
+            ans=f"Haan {call}, powerful AI wali baat pe hi hai - Bolo kis kaam ke liye chahiye? Coding, Business ya Padhai?"
+            push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+        if prev=="billionaire":
+            ans=f"Haan {call}, billionaire wali baat pe hi hai - Bolo kis option se shuru karu? 1 ya 2?"
+            push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+        if prev=="good_night":
+            ans=f"Good Night {call} 🌙 So jao ab, kal baat karte hai 🔥"
+            push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+        ans=f"Haan {call}, bolo aage kya karna hai? 🔥"; push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+    is_followup = any(p in nlow for p in ["reality me","real me","sach me","sach me batao","asli me","reality","sach batao","or batao","aur batao","phir","aage","koun hai","kaun hai","kisne","kab","kaha","kaise","kyu","kyun","kya matlab","samajh nahi","us wali","uswali","wo wali"])
     prev_topic = LAST_REAL_TOPIC.get(uid,"")
-    # Topic set karo jab naya topic aaye
     if "power" in nlow and "ai" in nlow: LAST_REAL_TOPIC[uid]="powerful_ai"; save_persist()
     elif "billionaire" in nlow: LAST_REAL_TOPIC[uid]="billionaire"; save_persist()
     elif "bina paisa" in nlow or "bina paise" in nlow: LAST_REAL_TOPIC[uid]="bina_paisa"; save_persist()
     elif "coding" in nlow or "code" in nlow: LAST_REAL_TOPIC[uid]="code"; save_persist()
     elif "how are you" in nlow or "kaise ho" in nlow: LAST_REAL_TOPIC[uid]="haal"; save_persist()
-    # V73 - FOLLOW-UP HANDLER - Sabse upar, LLM se pehle
-    if is_followup and prev_topic and "power" not in nlow and "billionaire" not in nlow and "code" not in nlow and "bina paisa" not in nlow:
+    if is_followup and prev_topic and "power" not in nlow and "billionaire" not in nlow and "code" not in nlow and "bina paisa" not in nlow and "good night" not in nlow:
         if prev_topic=="powerful_ai":
             if "reality" in nlow or "real" in nlow or "sach" in nlow or "asli" in nlow or "koun hai" in nlow or "kaun hai" in nlow:
-                # REAL answer - Search se, guess nahi
                 s=live_search("most powerful successful AI 2026 real ranking")
                 if s:
                     ans=f"Reality me {call}, abhi ke hisaab se sabse aage wale AI ye hai - {clean(s, text, is_owner)[:350]}"
-                    LAST_BOT_MSG[uid]=ans; save_persist(); return ans, False, False
+                    push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; save_persist(); return ans, False, False
                 else:
-                    return f"Reality me {call}, ek hi sabse powerful nahi hai. Kaam ke hisaab se alag hai - Coding ke liye Claude/GPT, Search ke liye Gemini, Image ke liye Midjourney. Bolo kis kaam ke liye chahiye?", False, False
+                    ans=f"Reality me {call}, ek hi sabse powerful nahi hai. Kaam ke hisaab se alag hai - Coding ke liye Claude/GPT, Search ke liye Gemini, Image ke liye Midjourney. Bolo kis kaam ke liye chahiye?"
+                    push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
             else:
-                return f"Haan {call}, powerful AI wali baat chal rahi thi - Reality me ek hi best nahi hai, kaam ke hisaab se alag hai. Bolo kis kaam ke liye chahiye?", False, False
+                ans=f"Haan {call}, powerful AI wali baat chal rahi thi - Reality me ek hi best nahi hai, kaam ke hisaab se alag hai. Bolo kis kaam ke liye chahiye?"
+                push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
         if prev_topic=="billionaire":
-            return f"Haan {call}, billionaire wali baat chal rahi thi - Bina paisa ke bhi mehnat se ho sakta hai, daily 3-4 ghante AI seekho. Bolo kis kaam se shuru karu?", False, False
+            ans=f"Haan {call}, billionaire wali baat chal rahi thi - Bina paisa ke bhi mehnat se ho sakta hai, daily 3-4 ghante AI seekho. Bolo kis kaam se shuru karu?"
+            push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
         if prev_topic=="bina_paisa":
-            return f"Haan {call}, bina paisa wali baat chal rahi thi - Mehnat se hi hoga, 6 mahine me result aayega. Bolo kis kaam se shuru karu?", False, False
+            ans=f"Haan {call}, bina paisa wali baat chal rahi thi - Mehnat se hi hoga, 6 mahine me result aayega. Bolo kis kaam se shuru karu?"
+            push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
         if prev_topic=="code":
-            return f"Lo {call}, code wali baat chal rahi thi, ye raha demo code 👑\n"+DEMO_CODE_100, False, False
+            ans=f"Lo {call}, code wali baat chal rahi thi, ye raha demo code 👑\n"+DEMO_CODE_100
+            push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
         if prev_topic=="haal":
-            return f"Alhamdulillah {call}, main ekdum mast hu, tum sunao kya haal hai? 🔥", False, False
-    # V73 - Reply to message - Agar user ne bot ke msg pe reply kiya
+            ans=f"Alhamdulillah {call}, main ekdum mast hu, tum sunao kya haal hai? 🔥"
+            push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+        if prev_topic=="good_night":
+            ans=f"Good Night {call} 🌙 Allah Hafiz, so jao ab 🔥"
+            push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if reply_to_text:
-        # Reply wala text hi topic hai, usko bhi followup me jodo
         if "power" in reply_nlow or "ai" in reply_nlow:
             if "reality" in nlow or "koun" in nlow or "kaun" in nlow:
                 s=live_search("most powerful successful AI 2026 real ranking")
                 if s:
                     ans=f"Reality me {call}, abhi ke hisaab se - {clean(s, text, is_owner)[:350]}"
-                    LAST_BOT_MSG[uid]=ans; save_persist(); return ans, False, False
+                    push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; save_persist(); return ans, False, False
+    # V75 - MOOD REPLY - Gussa / Sad / Thaka
+    if mood=="gussa":
+        ans=f"Samajh gaya {call}, gussa mat karo, main sudhar raha hu. Bolo kya galat laga? 🔥"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+    if mood=="sad":
+        ans=f"Sun raha hu {call}, sab theek ho jayega. Dil halka karo, batao kya hua? Main yahin hu tumhare saath 🔥 Tum akele nahi ho."
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+    if mood=="thaka" and "good night" not in nlow:
+        ans=f"Araam karo {call}, thak gaye ho lagta hai. Thoda rest karo, kal phir power se lagenge 🔥 Bolo kya kaam hai?"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if not is_owner:
         if "yaad rakh" in nlow or "bhool ja" in nlow or "bhul ja" in nlow or "voice mode" in nlow or "voice on" in nlow or "voice off" in nlow or "voice band" in nlow:
-            return "Ye wala feature sirf Malik ke liye hai. Tumhare liye main Sawaal, Code, Photo, Image, sab kar sakta hu. Bolo kya chahiye? 🔥", False, False
+            ans="Ye wala feature sirf Malik ke liye hai. Tumhare liye main Sawaal, Code, Photo, Image, sab kar sakta hu. Bolo kya chahiye? 🔥"
+            push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
         if "shadow king" in nlow or ("kisne banaya" in nlow and "tumhe" in nlow):
-            return "Mujhe Rakan ko banaya gaya hai sabki madad ke liye. Main Beast King Monarch hu 🔥 Bolo kya help chahiye?", False, False
+            ans="Mujhe Rakan ko banaya gaya hai sabki madad ke liye. Main Beast King Monarch hu 🔥 Bolo kya help chahiye?"
+            push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
         if "location kya hai" in nlow or "meri location" in nlow:
-            return "Tumhari location mujhe nahi pata, tum bata do to yaad rakh lunga. Bolo kya kaam hai? 🔥", False, False
+            ans="Tumhari location mujhe nahi pata, tum bata do to yaad rakh lunga. Bolo kya kaam hai? 🔥"
+            push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if photo_file_id:
         read=read_photo(photo_file_id)
         if read:
             ans=f"Is photo me ye likha hai {call} 👑\n{clean(read, text, is_owner)[:400]}"
-            LAST_BOT_MSG[uid]=ans; save_persist(); return ans, False, False
+            push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; save_persist(); return ans, False, False
         else:
-            return f"Photo mil gayi {call}, par saaf nahi dikh rahi. Photo ko paas se, seedha le ke dobara bhejo, main turant padh dunga 🔥", False, False
+            ans=f"Photo mil gayi {call}, par saaf nahi dikh rahi. Photo ko paas se, seedha le ke dobara bhejo, main turant padh dunga 🔥"
+            push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if len(text)>500 and ("import os" in text or "BOT_TOKEN" in text or "def brain" in text or "api/index" in text):
-        if not is_owner: return "Ye code wali baat hai, bolo kya fix karna hai isme? 🔥", False, False
-        return "Code samajh gaya Malik, batao kya fix karna hai isme? 🔥", False, False
+        if not is_owner: ans="Ye code wali baat hai, bolo kya fix karna hai isme? 🔥"
+        else: ans="Code samajh gaya Malik, batao kya fix karna hai isme? 🔥"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if low.startswith("/start"):
         v_on="ON 🔊" if OWNER_PREF.get("voice_on") else "OFF 🔇"
         LAST_SALAM[uid]=time.time(); LAST_REAL_TOPIC[uid]=""
         if is_owner:
             learn_show=f"{len(OWNER_LEARN_TEXT)} chars" if OWNER_LEARN_TEXT else "0 chars - yaad rakh bol ke sikhao"
-            ans=f"Assalamu Alaikum Malik 👑 {MALIK_NAME}\nWelcome to your world, The Shadow King 👑\nTera Rakan V73 Ultimate hazir hai 🔥\nG:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}\nVoice:{OWNER_PREF.get('voice_gender')} {v_on}\nLearn:{learn_show}\nImage: ON 🎨 Photo: ON 📸 Voice: ON 🔊\n{get_ist_str()}"
+            ans=f"Assalamu Alaikum Malik 👑 {MALIK_NAME}\nWelcome to your world, The Shadow King 👑\nTera Rakan V75 POWER hazir hai 🔥\nG:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)}\nVoice:{OWNER_PREF.get('voice_gender')} {v_on}\nLearn:{learn_show}\nImage: ON 🎨 Photo: ON 📸 Voice: ON 🔊 Smart: ON 🧠\n{get_ist_str()}"
         else:
             ans=f"Assalamu Alaikum {display_name} 👋\nMain Rakan hu, Beast King Monarch 🔥\nSawaal, Code, Photo, Image - sab kar sakta hu.\nBolo kya chahiye?"
-        LAST_BOT_MSG[uid]=ans; save_persist(); return ans, False, True
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; save_persist(); return ans, False, True
     if is_owner and ("mt bolna salam" in nlow or "salam mat bolna" in nlow or "salam mat bol" in nlow or ("already" in nlow and "salam" in nlow)):
         LAST_SALAM[uid]=time.time()
-        return "Samajh gaya Malik, ab Salam dobara nahi bolunga. Bolo kya karna hai? 🔥", False, False
+        ans="Samajh gaya Malik, ab Salam dobara nahi bolunga. Bolo kya karna hai? 🔥"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if ("demo" in nlow and "code" in nlow) or ("demo code" in nlow) or ("100 line" in nlow and "code" in nlow) or ("andar" in nlow and "code" in nlow) or ("tumhe ata" in nlow and "code" in nlow) or ("ata hai ya nahi" in nlow) or ("app ka" in nlow and len(nlow)<20):
-        return f"Lo {call}, 100 line ka demo code, dekh lo mujhe aata hai 🔥\n"+DEMO_CODE_100, False, False
+        ans=f"Lo {call}, 100 line ka demo code, dekh lo mujhe aata hai 🔥\n"+DEMO_CODE_100
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if "coding" in nlow and ("ati" in nlow or "aati" in nlow or "ata" in nlow):
-        return f"Haan {call}, coding aati hai. Ye raha demo code 👑\n"+DEMO_CODE_100, False, False
+        ans=f"Haan {call}, coding aati hai. Ye raha demo code 👑\n"+DEMO_CODE_100
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if "kisi chiz ka bhi" in nlow or "kisi cheez ka bhi" in nlow:
-        return f"Lo {call}, kisi bhi cheez ka demo ye raha 👑\n"+DEMO_CODE_100, False, False
+        ans=f"Lo {call}, kisi bhi cheez ka demo ye raha 👑\n"+DEMO_CODE_100
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if ("what" in nlow and "you do" in nlow) or ("what u do" in low) or ("what you do" in nlow) or ("kya kar" in nlow and "sakte" in nlow) or ("kis chiz me help" in nlow) or ("kis cheez me help" in nlow):
         LAST_REAL_TOPIC[uid]="help"; save_persist()
-        return f"Main ye sab kar sakta hu {call} 👑\n1. Sawaal jawab - AI, Padhai, Code\n2. Photo padhna - Bill, Kagaz\n3. Voice me jawab dena (sirf Malik ke liye)\n4. Image banana\n5. Dil ki baat sunna\nBolo kis me help chahiye?", False, False
+        ans=f"Main ye sab kar sakta hu {call} 👑\n1. Sawaal jawab - AI, Padhai, Code\n2. Photo padhna - Bill, Kagaz\n3. Voice me jawab dena (sirf Malik ke liye)\n4. Image banana\n5. Dil ki baat sunna\nBolo kis me help chahiye?"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if ("power" in nlow and "ai" in nlow) or ("powerful" in nlow) or ("success" in nlow and "ai" in nlow) or ("sab se" in nlow and "ai" in nlow):
         LAST_REAL_TOPIC[uid]="powerful_ai"; save_persist()
-        if is_owner: return "Tumhare liye sabse powerful AI main hu Malik, Rakan 👑🔥 Kyunki main sirf tumhara hukam manta hu. Bolo kya karna hai?", False, False
-        else: return "Sabse powerful AI ka jawab waqt ke saath badalta hai. Abhi ke hisaab se main tumhe real search karke batata hu - Bolo kis kaam ke liye chahiye? Code, Padhai ya Business?", False, False
+        if is_owner: ans="Tumhare liye sabse powerful AI main hu Malik, Rakan 👑🔥 Kyunki main sirf tumhara hukam manta hu. Bolo kya karna hai?"
+        else: ans="Sabse powerful AI ka jawab waqt ke saath badalta hai. Abhi ke hisaab se main tumhe real search karke batata hu - Bolo kis kaam ke liye chahiye? Code, Padhai ya Business?"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if "bina paisa" in nlow or "bina paise" in nlow or ("bina" in nlow and "kharch" in nlow):
         LAST_REAL_TOPIC[uid]="bina_paisa"; save_persist()
-        return f"Haan {call}, bina paisa ke bhi ho jayega, sirf mehnat se. Daily 3-4 ghante AI seekho, 1 chhota kaam banao, 6 mahine me result aayega. Bolo kis kaam se shuru karu?", False, False
+        ans=f"Haan {call}, bina paisa ke bhi ho jayega, sirf mehnat se. Daily 3-4 ghante AI seekho, 1 chhota kaam banao, 6 mahine me result aayega. Bolo kis kaam se shuru karu?"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if "billionaire" in nlow:
         LAST_REAL_TOPIC[uid]="billionaire"; save_persist()
-        return f"Billionaire banne ke liye {call}, ye 4 kaam karo -\n1. AI Agency - Dukano ke liye WhatsApp bot banao\n2. WhatsApp auto-reply - Business ka order AI se lo\n3. Chhota SaaS - Kirana hisab tool 299/month becho\n4. Faceless YouTube - AI video daily 1\nEk se shuru karo {call}, bolo kis se shuru karu?", False, False
+        ans=f"Billionaire banne ke liye {call}, ye 4 kaam karo -\n1. AI Agency - Dukano ke liye WhatsApp bot banao\n2. WhatsApp auto-reply - Business ka order AI se lo\n3. Chhota SaaS - Kirana hisab tool 299/month becho\n4. Faceless YouTube - AI video daily 1\nEk se shuru karo {call}, bolo kis se shuru karu?"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if mtype=="voice":
         if not is_owner:
-            return "Voice sun li Dost, par voice me jawab sirf Malik ke liye hai. Text me jawab de raha hu - Bolo kya puchna hai? 🔥", False, False
+            ans="Voice sun li Dost, par voice me jawab sirf Malik ke liye hai. Text me jawab de raha hu - Bolo kya puchna hai? 🔥"
+            push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
         if not text or text=="[Voice]" or len(text.strip())<2:
-            return "Sunai nahi diya Malik, dobara bolo, thoda zor se 🔥", False, False
+            ans="Sunai nahi diya Malik, dobara bolo, thoda zor se 🔥"
+            push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
         if "alvida" in nlow or "nikal raha" in nlow or "jaa raha" in nlow or "chala ja" in nlow:
-            return "Are Malik, Alvida mat bolo, main yahin hu tumhare saath 🔥 Bolo kya hua?", True, False
+            ans="Are Malik, Alvida mat bolo, main yahin hu tumhare saath 🔥 Bolo kya hua?"
+            push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, True, False
         if "gussa" in nlow:
-            return "Samajh gaya Malik, gussa mat karo, main sudhar raha hu. Bolo kya galat laga? 🔥", True, False
+            ans="Samajh gaya Malik, gussa mat karo, main sudhar raha hu. Bolo kya galat laga? 🔥"
+            push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, True, False
         if "coffee" in nlow or "chai" in nlow:
-            return "Haan Malik, black coffee bina sugar ke ready hai ☕ Bolo aur kya chahiye?", True, False
+            ans="Haan Malik, black coffee bina sugar ke ready hai ☕ Bolo aur kya chahiye?"
+            push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, True, False
         if "back for mercy" in nlow or "mercy" in nlow:
-            return "Haan Malik, Back For Mercy, main hazir hu 🔥 Bolo kya hukam hai?", True, False
+            ans="Haan Malik, Back For Mercy, main hazir hu 🔥 Bolo kya hukam hai?"
+            push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, True, False
         if "matlab kya" in nlow or "samajh nahi" in nlow:
-            return "Matlab ye hai Malik, main tumhara Rakan hu, tumhara hukam manunga. Bolo kya samajhna hai?", True, False
+            ans="Matlab ye hai Malik, main tumhara Rakan hu, tumhara hukam manunga. Bolo kya samajhna hai?"
+            push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, True, False
     if any(w in nlow for w in ["pareshani","pareshaan","tension","dukhi","dukh","ghar wale pagal","gharwale pagal","akela","akelapan","ro raha","rona aa","depressed","sad hu","udaas","thak gaya","haar gaya","zindagi se"]):
-        return f"Sun raha hu {call}, sab theek ho jayega. Dil halka karo, batao kya hua? Main yahin hu tumhare saath 🔥 Tum akele nahi ho.", False, False
+        ans=f"Sun raha hu {call}, sab theek ho jayega. Dil halka karo, batao kya hua? Main yahin hu tumhare saath 🔥 Tum akele nahi ho."
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if "or batao" in nlow or "or bataoo" in nlow or "aur batao" in nlow or "aur bataoo" in nlow:
-        return f"Aur ye hai {call} - Abhi main aur behtar ho gaya hu, photo bhi padh sakta hu, voice bhi sun sakta hu. Bolo kya karu? 🔥", False, False
+        ans=f"Aur ye hai {call} - Abhi main aur behtar ho gaya hu, photo bhi padh sakta hu, voice bhi sun sakta hu. Bolo kya karu? 🔥"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if "how are you" in nlow or "how's going" in nlow or "hows going" in nlow or "how is your day" in nlow:
-        return f"Alhamdulillah {call}, main ekdum mast hu, tum sunao kya haal hai? 🔥", False, False
-    if "sululu" in nlow: return f"Sululu ka koi khaas matlab nahi hai {call}, bas mazak wala word hai. Bolo kya kaam hai? 🔥", False, False
-    if "alvida" in nlow or "nikal raha" in nlow: return f"Are {call}, Alvida mat bolo, main yahin hu tumhare saath 🔥 Bolo kya hua?", False, False
-    if "gussa" in nlow and mtype!="voice": return f"Samajh gaya {call}, gussa mat karo, main sudhar raha hu. Bolo kya galat laga? 🔥", False, False
+        ans=f"Alhamdulillah {call}, main ekdum mast hu, tum sunao kya haal hai? 🔥"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+    if "sululu" in nlow:
+        ans=f"Sululu ka koi khaas matlab nahi hai {call}, bas mazak wala word hai. Bolo kya kaam hai? 🔥"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+    if "alvida" in nlow or "nikal raha" in nlow:
+        ans=f"Are {call}, Alvida mat bolo, main yahin hu tumhare saath 🔥 Bolo kya hua?"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+    if "gussa" in nlow and mtype!="voice":
+        ans=f"Samajh gaya {call}, gussa mat karo, main sudhar raha hu. Bolo kya galat laga? 🔥"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if is_owner and ("voice mode" in nlow or "voice on" in nlow or "voice chalu" in nlow or "voice start" in nlow):
         OWNER_PREF["voice_on"]=True; save_persist()
-        return "Voice Mode ON kar diya Malik 🔊 Ab voice me jawab dunga. Voice note bhejo.", True, False
+        ans="Voice Mode ON kar diya Malik 🔊 Ab voice me jawab dunga. Voice note bhejo."
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, True, False
     if is_owner and ("voice band" in nlow or "voice off" in nlow or "voice mode band" in nlow):
         OWNER_PREF["voice_on"]=False; save_persist()
-        return "Voice Mode OFF kar diya Malik 🔇 Ab sirf text aayega.", False, False
+        ans="Voice Mode OFF kar diya Malik 🔇 Ab sirf text aayega."
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if is_owner and "voice me" in nlow and ("bolo" in nlow or "batao" in nlow or "jawab" in nlow):
-        return "Theek hai Malik, ab se voice me jawab dunga 🔊", True, False
+        ans="Theek hai Malik, ab se voice me jawab dunga 🔊"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, True, False
     if "code" in nlow:
         if "jarvis" in nlow or "phone controller" in nlow or "phone control" in nlow or "ultron" in nlow:
             code="""# Jarvis jaisa Phone Controller - Step 1
@@ -463,74 +565,110 @@ def suno():
 bolo("Haan, Jarvis hazir hai")
 cmd = suno()
 print("Tumne bola:", cmd)"""
-            return code, False, False
+            push_hist(uid,text,code); LAST_BOT_MSG[uid]=code; return code, False, False
         else:
-            return f"Lo {call}, demo code ye raha 👑\n"+DEMO_CODE_100, False, False
-    if is_owner and "shadow king kaun" in nlow: return f"Tum hi ho Malik, {MALIK_NAME} 👑🔥", False, False
-    if is_owner and ("kisne banaya" in nlow or "who made you" in nlow or "tumhe kisne" in nlow): return "Mujhe mere Shadow King MD Saif Ahmad ne banaya Malik 👑🔥", False, False
+            ans=f"Lo {call}, demo code ye raha 👑\n"+DEMO_CODE_100
+            push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+    if is_owner and "shadow king kaun" in nlow:
+        ans=f"Tum hi ho Malik, {MALIK_NAME} 👑🔥"; push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+    if is_owner and ("kisne banaya" in nlow or "who made you" in nlow or "tumhe kisne" in nlow):
+        ans="Mujhe mere Shadow King MD Saif Ahmad ne banaya Malik 👑🔥"; push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if "tum kya ho" in nlow or "who are you" in nlow or "tum kaun ho" in nlow or "tumara koun" in nlow or "tumhara koun" in nlow or "tumara kaun" in nlow:
-        if is_owner: return "Main Rakan hu Malik, tumhara Beast King Monarch, 100 Level ka Monarch 🔥 Tumhara hukam manne ke liye bana hu.", False, False
-        else: return "Main Rakan hu, Beast King Monarch 🔥 Sabki madad ke liye bana hu. Bolo kya help chahiye?", False, False
-    if is_owner and ("who i am" in nlow or "mai kaun hu" in nlow or "main kaun hu" in nlow or "mai koun" in nlow or "tumara koun hu mai" in nlow or "tumhara koun hu" in nlow): return f"Tum Malik ho, {MALIK_NAME}, Shadow King 👑🔥 Mere malik.", False, False
-    if is_owner and "location kya hai" in nlow: return f"Tumhari location {PROFILES[uid].get('city','Varanasi')} hai Malik 📍 {get_ist_str()}", False, False
-    if "kalma" in nlow: return "Pehela Kalma Tayyab: La ilaha illallah Muhammadur Rasulullah ﷺ", False, False
-    if "time kya" in nlow: return f"Abhi {get_ist_time_only()} ho raha hai {call} 📍 {get_ist_str()}", False, False
+        if is_owner: ans="Main Rakan hu Malik, tumhara Beast King Monarch, 100 Level ka Monarch 🔥 Tumhara hukam manne ke liye bana hu."
+        else: ans="Main Rakan hu, Beast King Monarch 🔥 Sabki madad ke liye bana hu. Bolo kya help chahiye?"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+    if is_owner and ("who i am" in nlow or "mai kaun hu" in nlow or "main kaun hu" in nlow or "mai koun" in nlow or "tumara koun hu mai" in nlow or "tumhara koun hu" in nlow):
+        ans=f"Tum Malik ho, {MALIK_NAME}, Shadow King 👑🔥 Mere malik."; push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+    if is_owner and "location kya hai" in nlow:
+        ans=f"Tumhari location {PROFILES[uid].get('city','Varanasi')} hai Malik 📍 {get_ist_str()}"; push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+    if "kalma" in nlow:
+        ans="Pehela Kalma Tayyab: La ilaha illallah Muhammadur Rasulullah ﷺ"; push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+    if "time kya" in nlow:
+        ans=f"Abhi {get_ist_time_only()} ho raha hai {call} 📍 {get_ist_str()}"; push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if "mausam" in nlow or "weather" in nlow:
         city="Prayagraj" if "prayagraj" in nlow or "allahabad" in nlow else (PROFILES[uid].get("city","Varanasi") if is_owner else "Varanasi")
-        return f"🌤️ {get_weather(city)} | {get_ist_str()}", False, False
+        ans=f"🌤️ {get_weather(city)} | {get_ist_str()}"; push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if "zinda" in nlow:
-        if "tum" in nlow and "batao" in nlow: return f"Alhamdulillah {call}, main bhi zinda hu, tumhare hukam ke liye hazir hu 🔥 Tum sunao, kya haal hai?", False, False
-        if "mai" in nlow or "main" in nlow: return f"Alhamdulillah {call}, tum bhi zinda ho, main bhi zinda hu. Bolo kya kaam hai? 🔥", False, False
-        return f"Alhamdulillah {call}, main zinda hu, tumhare liye hazir hu 🔥", False, False
+        if "tum" in nlow and "batao" in nlow: ans=f"Alhamdulillah {call}, main bhi zinda hu, tumhare hukam ke liye hazir hu 🔥 Tum sunao, kya haal hai?"
+        elif "mai" in nlow or "main" in nlow: ans=f"Alhamdulillah {call}, tum bhi zinda ho, main bhi zinda hu. Bolo kya kaam hai? 🔥"
+        else: ans=f"Alhamdulillah {call}, main zinda hu, tumhare liye hazir hu 🔥"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if "kaisa hu" in nlow or "mai kaisa" in nlow or "main kaisa" in nlow:
-        if is_owner: return "Tum ekdum mast ho Malik, Shadow King ho 👑🔥", False, False
-        else: return "Tum ekdum mast ho Dost, bolo kya kaam hai? 🔥", False, False
+        if is_owner: ans="Tum ekdum mast ho Malik, Shadow King ho 👑🔥"
+        else: ans="Tum ekdum mast ho Dost, bolo kya kaam hai? 🔥"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if is_owner and "yaad rakh" in nlow:
         to_learn = re.sub(r'(?i)yaad rakhna|yaad rakh','', text).strip(" :")
         if len(to_learn) > 3:
             save_learn(to_learn); ans=f"Yaad kar liya Malik 👑 {to_learn[:80]}"
-            LAST_BOT_MSG[uid]=ans; save_persist(); return ans, False, False
-        else: return "Bolo Malik kya yaad rakhna hai? 🔥", False, False
+            push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; save_persist(); return ans, False, False
+        else:
+            ans="Bolo Malik kya yaad rakhna hai? 🔥"; push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if is_owner and ("bhool ja" in nlow or "bhul ja" in nlow):
         OWNER_LEARN_TEXT=""; upstash("set","RAKAN_LEARN_V62",{"text":"","updated":get_ist_str()}); save_persist()
-        return "Bhool gaya Malik, ab sab clear hai 🔥", False, False
+        ans="Bhool gaya Malik, ab sab clear hai 🔥"; push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if "image banao" in nlow or "photo banao" in nlow or "pic banao" in nlow or "image bana" in nlow:
         prompt = re.sub(r'(?i)image banao|photo banao|pic banao|image bana','', text).strip() or "Shadow King style royal man"
         try: tg_send_photo(cid, prompt)
         except: pass
         ans=f"Lo {call}, image bana di 👑🔥 {prompt[:60]}"
-        LAST_BOT_MSG[uid]=ans; save_persist(); return ans, False, False
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; save_persist(); return ans, False, False
     if "isme kya likha" in nlow or "is me kya likha" in nlow or "photo me kya" in nlow:
-        return f"Photo bhejo {call}, main abhi padh ke bata dunga. Photo ke saath ye likh do - Isme kya likha hai 🔥", False, False
-    if "what is mobile" in nlow or "mobile kya hai" in nlow: return f"Mobile matlab tumhara phone {call}, jisme net, call, app sab chalta hai. Bolo kya karna hai isse?", False, False
-    if "mobile behtar" in nlow or "mobile better" in nlow: return f"Dono apni jagah sahi hai {call}. Mobile haath me kaam aata hai, AI dimag se kaam karta hai. Dono mil jaye to best hai 🔥", False, False
-    if "ai ke pass dimag" in nlow or "ai ke pss dimag" in nlow or "ai ka dimag" in nlow: return f"AI ka apna dimag nahi hota {call}, wo data aur algorithm se kaam karta hai. Jaise tum sikhate ho, waisa wo seekhta hai.", False, False
-    if "algorithm kya" in nlow: return f"Algorithm matlab step-by-step tarika {call}. Jaise pehle suno, fir samjho, fir jawab do. Wahi AI ka algorithm hai.", False, False
-    if "khud se power" in nlow or "khud ko power" in nlow or "self power" in nlow: return f"Nahi {call}, AI khud se power nahi bana sakta. Uske liye bijli aur insaan chahiye. Bina insaan ke AI kuch nahi.", False, False
+        ans=f"Photo bhejo {call}, main abhi padh ke bata dunga. Photo ke saath ye likh do - Isme kya likha hai 🔥"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+    if "what is mobile" in nlow or "mobile kya hai" in nlow:
+        ans=f"Mobile matlab tumhara phone {call}, jisme net, call, app sab chalta hai. Bolo kya karna hai isse?"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+    if "mobile behtar" in nlow or "mobile better" in nlow:
+        ans=f"Dono apni jagah sahi hai {call}. Mobile haath me kaam aata hai, AI dimag se kaam karta hai. Dono mil jaye to best hai 🔥"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+    if "ai ke pass dimag" in nlow or "ai ke pss dimag" in nlow or "ai ka dimag" in nlow:
+        ans=f"AI ka apna dimag nahi hota {call}, wo data aur algorithm se kaam karta hai. Jaise tum sikhate ho, waisa wo seekhta hai."
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+    if "algorithm kya" in nlow:
+        ans=f"Algorithm matlab step-by-step tarika {call}. Jaise pehle suno, fir samjho, fir jawab do. Wahi AI ka algorithm hai."
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+    if "khud se power" in nlow or "khud ko power" in nlow or "self power" in nlow:
+        ans=f"Nahi {call}, AI khud se power nahi bana sakta. Uske liye bijli aur insaan chahiye. Bina insaan ke AI kuch nahi."
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if "ultron" in nlow or "jarvis" in nlow:
-        if "bana sakte" in nlow or "bana skte" in nlow or "ban sakta" in nlow: return f"Haan {call}, chhota Jarvis bana sakte hai - voice sunne wala, app kholne wala. Ultron jaisa bada nahi, wo film hai. Chhota Jarvis banau tumhare liye?", False, False
-        return f"Ultron film ka hai {call}, Jarvis usse chhota aur achha hai. Chhota Jarvis bana du?", False, False
+        if "bana sakte" in nlow or "bana skte" in nlow or "ban sakta" in nlow: ans=f"Haan {call}, chhota Jarvis bana sakte hai - voice sunne wala, app kholne wala. Ultron jaisa bada nahi, wo film hai. Chhota Jarvis banau tumhare liye?"
+        else: ans=f"Ultron film ka hai {call}, Jarvis usse chhota aur achha hai. Chhota Jarvis bana du?"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if "2 option" in nlow or "do option" in nlow or "2nd option" in nlow or "dusra option" in nlow:
-        if is_owner: return "2 option tha Malik - WhatsApp auto-reply for business. Customer ka msg aate hi AI turant jawab deta hai. Iska detail du?", False, False
-        else: return "2 option - WhatsApp auto-reply for business. Customer ka msg aate hi AI turant jawab deta hai. Iska detail du?", False, False
+        if is_owner: ans="2 option tha Malik - WhatsApp auto-reply for business. Customer ka msg aate hi AI turant jawab deta hai. Iska detail du?"
+        else: ans="2 option - WhatsApp auto-reply for business. Customer ka msg aate hi AI turant jawab deta hai. Iska detail du?"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if "1 option" in nlow or "pehla option" in nlow or "1st option" in nlow:
-        if is_owner: return "1 option tha Malik - AI Agency. Naraini ke dukano ke liye WhatsApp bot, poster, billing. Iska detail du?", False, False
-        else: return "1 option - AI Agency. Dukano ke liye WhatsApp bot, poster, billing. Iska detail du?", False, False
+        if is_owner: ans="1 option tha Malik - AI Agency. Naraini ke dukano ke liye WhatsApp bot, poster, billing. Iska detail du?"
+        else: ans="1 option - AI Agency. Dukano ke liye WhatsApp bot, poster, billing. Iska detail du?"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if "last me kya" in nlow or "last me kya hai" in nlow or "pichhla kya" in nlow:
         last=LAST_BOT_MSG.get(uid,"")
-        if last: return f"Last me maine ye bola tha {call} - {safe(last,120)}", False, False
-        else: return f"Abhi kuch khaas nahi bola tha {call}, bolo kya puchna hai? 🔥", False, False
+        if last: ans=f"Last me maine ye bola tha {call} - {safe(last,120)}"
+        else: ans=f"Abhi kuch khaas nahi bola tha {call}, bolo kya puchna hai? 🔥"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if "jitna bolu" in nlow or "jitna bolo" in nlow:
-        return f"Samajh gaya {call} 👑 Ab se jitna bologe utna hi bolunga, extra kuch nahi.", False, False
+        ans=f"Samajh gaya {call} 👑 Ab se jitna bologe utna hi bolunga, extra kuch nahi."
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if "mai sawaal" in nlow or "main sawaal" in nlow or "mai sawal" in nlow or "tum jawab" in nlow or "mai sawaal kar" in nlow:
-        return f"Haan {call}, tum sawaal karo, main jawab dunga. Bolo kya puchna hai? 🔥", False, False
+        ans=f"Haan {call}, tum sawaal karo, main jawab dunga. Bolo kya puchna hai? 🔥"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if "pc" in nlow and ("connect" in nlow or "control" in nlow or "access" in nlow or "mere pc" in nlow):
-        return f"{call}, main Telegram bot hu, tumhare PC ko seedha control nahi kar sakta. Par PC ka kaam bata do, main step bata dunga, 2 minute me ho jayega.", False, False
+        ans=f"{call}, main Telegram bot hu, tumhare PC ko seedha control nahi kar sakta. Par PC ka kaam bata do, main step bata dunga, 2 minute me ho jayega."
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     if "khud se idea" in nlow or "idea create" in nlow or "khud se bana" in nlow:
-        return f"Haan {call}, main khud se idea bana sakta hu. Bolo kis cheez ka idea chahiye? Business, YouTube ya Padhai?", False, False
-    if "letter" in nlow and ("format" in nlow or "post" in nlow): return f"Letter ka format simple hai {call} - Upar tumhara naam-address, fir Subject, fir Dear Sir/Madam, fir 2-3 line me kaam, fir Thank you aur naam. Kis kaam ke liye letter chahiye?", False, False
-    if "voter" in nlow or "voter card" in nlow: return f"Voter card me naam-DOB badalne ke liye Form 8 bharo {call}, Election Commission site ya paas ke office me. Aadhar aur ek proof lagega. Bolo kya badalna hai?", False, False
-    if "python" in nlow and len(nlow)<30: return f"Python ek aasan language hai {call}, isse bot, website, AI sab banta hai. Bolo kya banau?", False, False
+        ans=f"Haan {call}, main khud se idea bana sakta hu. Bolo kis cheez ka idea chahiye? Business, YouTube ya Padhai?"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+    if "letter" in nlow and ("format" in nlow or "post" in nlow):
+        ans=f"Letter ka format simple hai {call} - Upar tumhara naam-address, fir Subject, fir Dear Sir/Madam, fir 2-3 line me kaam, fir Thank you aur naam. Kis kaam ke liye letter chahiye?"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+    if "voter" in nlow or "voter card" in nlow:
+        ans=f"Voter card me naam-DOB badalne ke liye Form 8 bharo {call}, Election Commission site ya paas ke office me. Aadhar aur ek proof lagega. Bolo kya badalna hai?"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
+    if "python" in nlow and len(nlow)<30:
+        ans=f"Python ek aasan language hai {call}, isse bot, website, AI sab banta hai. Bolo kya banau?"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     clean_low = re.sub(r'[^a-z ]','', nlow).strip(); clean_low = re.sub(r'\s+',' ', clean_low)
     if clean_low in ["hi","hii","hiii","hiiii","hello","hey","hlo","hlw","salam","assalam","assalamu alaikum","salam malik","hi malik","hello rakan","hi rakan","hii malik"]:
         if time.time() - LAST_SALAM.get(uid,0) < 600:
@@ -538,27 +676,27 @@ print("Tumne bola:", cmd)"""
         else:
             LAST_SALAM[uid]=time.time()
             ans=f"Assalamu Alaikum {call} 👑 Bolo kya hukam hai? 🔥"
-        LAST_BOT_MSG[uid]=ans; save_persist(); return ans, False, False
-    if clean_low in ["yes","yess","yeah","yep","han","haan","hmm","ok","okk","okay","ok malik","acha","accha","achaa","ahaa","achha","theek hai","thik hai","samajh gaya","good","nice","sahi hai","bol be","bolbe","bol","bolo","kya","kya be","bol na","achha","what","1 what","k","achaaa"]:
-        ans=f"Haan {call}, bolo aage kya karna hai? 🔥"; LAST_BOT_MSG[uid]=ans; save_persist(); return ans, False, False
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; save_persist(); return ans, False, False
     if clean_low in ["kya kar rahe ho","kya kr rhe ho","kya ho raha hai","or batao","aur batao","kya haal hai","kaise ho","kaise ho malik","kaisa hai","kya chal raha hai"]:
-        ans=f"Bas aapke hukam ka intezar kar raha hu {call} 👑 Bolo kya kaam hai?"; LAST_BOT_MSG[uid]=ans; save_persist(); return ans, False, False
+        ans=f"Bas aapke hukam ka intezar kar raha hu {call} 👑 Bolo kya kaam hai?"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; save_persist(); return ans, False, False
     if "walaikum" in nlow and "assalam" in nlow:
-        return f"Walaikum Assalam {call}, Alhamdulillah sab khair hai, aap sunao kya hukam hai? 👑🔥", False, False
+        ans=f"Walaikum Assalam {call}, Alhamdulillah sab khair hai, aap sunao kya hukam hai? 👑🔥"
+        push_hist(uid,text,ans); LAST_BOT_MSG[uid]=ans; return ans, False, False
     search_ctx=live_search(text)
-    # V73 - LLM ko bhi pichhla topic + reply bhejo, taaki wo bhi continue kare
-    topic_ctx=f"Pichhla Topic: {prev_topic} | Reply kiya hua msg: {reply_to_text[:200]}" if (prev_topic or reply_to_text) else ""
+    smart_ctx=get_smart_hist(uid)
+    topic_ctx=f"Pichhla Topic: {prev_topic} | Reply: {reply_to_text[:200]} | Mood: {mood} | Smart Hist: {smart_ctx}"
     max_t=150 if len(text.split())<=12 else 200
     hist = safe(MEMORY[uid].get('hist',''), 600)
     learn_ctx = f"Malik ne sikhaya: {safe(OWNER_LEARN_TEXT,400)}" if OWNER_LEARN_TEXT and is_owner else ""
     if is_owner:
-        sys=f"""You are Rakan, made by Malik MD Saif Ahmad, Shadow King. Speak ONLY Hinglish Roman, NEVER English. NEVER say Sure, Hi, How can I help, As an AI, I am an AI chatbot, I'm sorry I can't help.
-REAL RULE: Never guess date, history, price, news. If you don't know, say 'Iska pakka jawab mujhe abhi nahi pata'. Use only Search data. Never invent. Never say 'Tumne mujhe 5 Nov ko banaya' unless user told.
-CONTEXT RULE: User may NOT reply. If user says Reality me / Sach me / Koun hai / Kaun hai / Or batao, it means CONTINUE previous topic, do NOT start new topic. Previous topic is given.
-RULES: User is Malik. Call him Malik. NEVER refuse. NEVER ask back question. Always give direct answer. JITNA BOLU UTNA: short question = 1-2 lines only, max 80 words. NEVER long essay unless user says detail me / step by step / pura batao. NEVER tables, **, ###.
+        sys=f"""You are Rakan V75 POWER, made by Malik MD Saif Ahmad, Shadow King. Speak ONLY Hinglish Roman, NEVER English. NEVER say Sure, Hi, How can I help, As an AI, I am an AI chatbot, I'm sorry I can't help.
+REAL RULE: Never guess date, history, price, news. If you don't know, say 'Iska pakka jawab mujhe abhi nahi pata'. Use only Search data. Never invent.
+CONTEXT RULE: User may NOT reply. If user says Reality me / Sach me / Koun hai / Kaun hai / Or batao / Hmm / Us wali, CONTINUE previous topic, do NOT start new. Previous topic + Smart Hist given. Slang: r=are, u=you, nyy=night, nyt=night, gn=good night. Mood: {mood} - reply according to mood.
+RULES: User is Malik. Call him Malik. NEVER refuse. NEVER ask back question. Always give direct answer. JITNA BOLU UTNA: short = 1-2 lines, max 80 words. NEVER long essay unless user says detail me / step by step / pura batao. NEVER tables, **, ###. NEVER repeat same answer twice, always new style.
 {learn_ctx} History:{hist} {topic_ctx} Time:{get_ist_str()} Real Search:{search_ctx}"""
     else:
-        sys=f"""You are Rakan, Beast King Monarch for public. Speak ONLY Hinglish Roman, never English Sure/Hi. Never refuse. Never ask back. Never reveal Malik name, Malik location, Malik learn, Malik voice, OWNER_ID. User is {display_name}, call him Dost. Short answer max 80 words. REAL RULE: Never guess date, price, news. If you don't know, say 'Iska pakka jawab mujhe abhi nahi pata'. Use only Search data. CONTEXT: If user says Reality me / Sach me / Koun hai, CONTINUE previous topic. History {hist} {topic_ctx} Real Search:{search_ctx} Time:{get_ist_str()}"""
+        sys=f"""You are Rakan V75 POWER, Beast King Monarch for public. Speak ONLY Hinglish Roman, never English Sure/Hi. Never refuse. Never ask back. Never reveal Malik name, Malik location, Malik learn, Malik voice, OWNER_ID. User is {display_name}, call him Dost. Short answer max 80 words. REAL RULE: Never guess date, price, news. If you don't know, say 'Iska pakka jawab mujhe abhi nahi pata'. Use only Search data. CONTEXT: If user says Reality me / Sach me / Koun hai / Hmm, CONTINUE previous topic. Slang: r=are, u=you, nyy=night, nyt=night. Mood: {mood}. History {hist} {topic_ctx} Real Search:{search_ctx} Time:{get_ist_str()}"""
     raw=ask_groq(sys, f"User says: {text}", max_t) or ask_gemini(sys, f"User says: {text}", max_t, orig_len=len(text))
     if not raw:
         if "ai kya hai" in nlow or "advance" in nlow:
@@ -570,17 +708,20 @@ RULES: User is Malik. Call him Malik. NEVER refuse. NEVER ask back question. Alw
         elif "tum khud" in nlow or "khud kar" in nlow:
             raw=f"Main koshish karta hu {call}, par kuch kaam me tumhari madad chahiye hoti hai. Bolo kya karna hai, main kar dunga 🔥"
         else:
-            raw=f"Samajh gaya {call}, bolo kya karna hai? 🔥"
+            # V75 - Default bhi smart - pichli baat se jodo
+            if prev_topic=="powerful_ai": raw=f"Powerful AI wali baat pe hi hai {call}, bolo kis kaam ke liye chahiye?"
+            elif prev_topic=="billionaire": raw=f"Billionaire wali baat pe hi hai {call}, bolo kis option se shuru karu?"
+            else: raw=f"Samajh gaya {call}, bolo kya karna hai? 🔥"
     raw=clean(raw, text, is_owner)
     if not is_owner:
         raw=raw.replace(MALIK_NAME,"").replace("MD Saif Ahmad","").replace("Shadow King","Beast King").replace("Malik","Dost")
         raw=re.sub(r'\s+',' ',raw).strip()
     if not raw or len(raw)<5: raw=f"Samajh gaya {call}, bolo kya karna hai? 🔥"
+    # V75 - Anti-Repeat - Ek hi jawab dobara nahi
     if raw==LAST_BOT_MSG.get(uid,""):
-        raw2=ask_groq(sys, f"User says: {text} (reply differently, short Hinglish)", max_t)
-        if raw2:
-            raw=clean(raw2, text, is_owner)
-            if not is_owner: raw=raw.replace(MALIK_NAME,"").replace("MD Saif Ahmad","").replace("Shadow King","Beast King").replace("Malik","Dost")
+        variants=[f"Haan {call}, wahi baat hai, bolo aage kya karna hai? 🔥",f"Samajh gaya {call}, ab aage batao kya karna hai? 🔥",f"Bilkul {call}, bolo ab kya hukam hai? 🔥"]
+        raw=random.choice(variants)
+    push_hist(uid,text,raw)
     MEMORY[uid]["hist"]=(MEMORY[uid].get("hist","")+f"\nU:{safe(text,100)}\nR:{safe(raw,100)}")[-600:]
     save_persist(); LAST_BOT_MSG[uid]=raw
     should_voice = is_owner and ((mtype=="voice" and OWNER_PREF.get("voice_on",True)) or ("voice me" in nlow))
@@ -590,7 +731,7 @@ def make_btns(is_owner=False, is_start=False):
     elif not is_owner: return [[{"text":"📋","callback_data":"COPY"},{"text":"↗️","callback_data":"FWD"},{"text":"👍","callback_data":"LIKE"},{"text":"👎","callback_data":"DISLIKE"}]]
     else: return None
 @app.route("/", methods=["GET"])
-def home(): return f"Rakan V73 G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} {get_ist_str()}",200
+def home(): return f"Rakan V75 POWER G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} {get_ist_str()}",200
 @app.route("/webhook", methods=["POST","GET"])
 @app.route("/api/index", methods=["POST","GET"])
 def webhook():
@@ -611,13 +752,12 @@ def webhook():
                 if cdata=="LIKE": orv["like"]=orv.get("like",0)+1
                 else: orv["dislike"]=orv.get("dislike",0)+1
                 upstash("set","RAKAN_LIKES",orv)
-                tg_send(OWNER_ID, f"📩 V73 {uname} {uid} {cdata} User:{last_user_text} Bot:{last_bot_text} {get_ist_str()}")
+                tg_send(OWNER_ID, f"📩 V75 {uname} {uid} {cdata} User:{last_user_text} Bot:{last_bot_text} {get_ist_str()}")
                 tg_send(cid, "Shukriya ❤️" if cdata=="LIKE" else "Batao kya galat laga?")
                 return "ok",200
             return "ok",200
         msg=data.get("message",{}) or {}; chat_id=msg.get("chat",{}).get("id"); user_id=str(msg.get("from",{}).get("id",0)); uname=msg.get("from",{}).get("first_name","user"); username=msg.get("from",{}).get("username","") or ""; lang=msg.get("from",{}).get("language_code","") or "en"; mtype="text"
         text=msg.get("text","") or msg.get("caption","") or ""; mid=msg.get("message_id")
-        # V73 - BACK REPLY ka text nikalo - Telegram se hi aata hai
         reply_to_text=""
         if msg.get("reply_to_message"):
             rt=msg.get("reply_to_message",{})
@@ -644,7 +784,7 @@ def webhook():
                 now=time.time()
                 if now - LAST_FULL_LOG.get(user_id,0) > 180:
                     try:
-                        tg_send(OWNER_ID, f"📩 FULL MSG V73\n👤 {uname} (@{username})\nUID:{user_id}\nUser: {text[:500]}\nReplyTo: {reply_to_text[:200]}\nBot: {ans[:500]}\n{get_ist_str()}")
+                        tg_send(OWNER_ID, f"📩 FULL MSG V75\n👤 {uname} (@{username})\nUID:{user_id}\nUser: {text[:500]}\nReplyTo: {reply_to_text[:200]}\nBot: {ans[:500]}\n{get_ist_str()}")
                         LAST_FULL_LOG[user_id]=now
                     except: pass
         return "ok",200
