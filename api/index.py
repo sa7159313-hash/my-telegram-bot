@@ -771,4 +771,4 @@ def webhook():
                     except: pass
         return "ok",200
     except Exception as e:
-        print(f"ERR {e} {traceback.format_exc()}"); return "ok",200s
+        print(f"ERR {e} {traceback.format_exc()}"); return "ok",200
