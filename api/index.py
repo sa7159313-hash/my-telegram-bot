@@ -7,10 +7,9 @@ UPSTASH_URL=os.environ.get("UPSTASH_REDIS_REST_URL","").rstrip("/");UPSTASH_TOKE
 ELEVEN_API_KEY=os.environ.get("ELEVENLABS_API_KEY","");MALE_VOICE_ID=os.environ.get("ELEVEN_MALE_VOICE","pNInz6obpgDQGcFmaJgB");FEMALE_VOICE_ID=os.environ.get("ELEVEN_FEMALE_VOICE","21m00Tcm4TlvDq8ikWAM")
 OPENWEATHER_KEY=os.environ.get("OPENWEATHER_API_KEY","");TAVILY_KEY=os.environ.get("TAVILY_API_KEY","");REPLICATE_TOKEN=os.environ.get("REPLICATE_API_TOKEN","") or os.environ.get("REPLICATE_TOKEN","")
 GROQ_URL="https://api.groq.com/openai/v1/chat/completions";OPENAI_URL="https://api.openai.com/v1/chat/completions"
-MALIK_NAME="MD Saif Ahmad";SHADOW_TITLE="THE SHADOW KING";BIRTH_DATE="27 September 2026";BIRTH_TIME="Subhe 7 Baje";START_DATE="5 September 2026"
-# V94 - LORE LOCK - Kabhi change nahi hoga
-# Main Rakan hu, THE BEAST KING MONARCH. Kabhi ye nahi bolega: Main AI hu / Meta ne banaya / GPT ne banaya / Server se chalta hu
-MEMORY={};PROFILES={};BAD_KEYS={};OWNER_PREF={};LAST_BOT_MSG={};LAST_MSG_ID={};LAST_USER_MSG={};LAST_FULL_LOG={};OWNER_LEARN_TEXT="";LAST_SALAM={};LAST_BOT_SALAM={};LAST_REAL_TOPIC={};SMART_HIST={};MOOD={};CODER_MODE={};CHAT_MODE={};REAL_LOGS={};LAST_FAULTS=[];LAST_PHOTO_ERROR="Koi photo error nahi";LAST_API_ERROR="";LAST_MODEL_USED="";LAST_GROQ_STATUS="";LAST_GEMINI_STATUS="";LAST_OPENAI_STATUS=""
+MALIK_NAME="MD Saif Ahmad";SHADOW_TITLE="THE SHADOW KING";BIRTH_DATE="27 September 2026";BIRTH_TIME="Subhe 7 Baje";START_DATE="5 September 2026";MALIK_CITY="Prayagraj"
+# V96 LORE LOCK - Kabhi change nahi hoga: Main Rakan hu, THE BEAST KING MONARCH. Kabhi nahi: Main AI hu / Meta ne banaya / GPT ne banaya / Server se chalta hu
+MEMORY={};PROFILES={};BAD_KEYS={};OWNER_PREF={};LAST_BOT_MSG={};LAST_MSG_ID={};LAST_USER_MSG={};LAST_FULL_LOG={};OWNER_LEARN_TEXT="";LAST_SALAM={};LAST_BOT_SALAM={};SALAM_DONE={};LAST_REAL_TOPIC={};SMART_HIST={};MOOD={};CODER_MODE={};CHAT_MODE={};REAL_LOGS={};LAST_FAULTS=[];LAST_PHOTO_ERROR="Koi photo error nahi";LAST_API_ERROR="";LAST_MODEL_USED="";LAST_GROQ_STATUS="";LAST_GEMINI_STATUS="";LAST_OPENAI_STATUS="";LAST_WEATHER=""
 GROQ_MODELS=["openai/gpt-oss-120b","openai/gpt-oss-20b","qwen/qwen3.8-27b","groq/compound-mini"]
 GEMINI_MODELS=["gemini-3.8-flash","gemini-3.6-flash","gemini-3.1-pro-preview","gemini-3.5-flash-lite"]
 OPENAI_MODELS=["gpt-5.6-luna","gpt-6-luna","gpt-4o-mini"]
@@ -43,7 +42,7 @@ def upstash(cmd,key,val=None):
 def push_hist(uid,u,b):
     if uid not in SMART_HIST: SMART_HIST[uid]=[]
     SMART_HIST[uid].append({"u":u[:120],"b":b[:120],"t":time.time()});SMART_HIST[uid]=SMART_HIST[uid][-10:]
-    try: upstash("set","RAKAN_SMART_V94",SMART_HIST)
+    try: upstash("set","RAKAN_SMART_V96",SMART_HIST)
     except: pass
 def get_smart_hist(uid):
     h=SMART_HIST.get(uid,[]);return " | ".join([f"U:{x['u']} -> R:{x['b']}" for x in h[-6:]]) if h else ""
@@ -53,7 +52,7 @@ def save_real_log(uid,uname,username,ut,bt):
         ist=(datetime.datetime.utcnow()+datetime.timedelta(hours=5,minutes=30)).strftime("%d %b %Y, %I:%M %p")
         if uid not in REAL_LOGS: REAL_LOGS[uid]={"name":uname,"username":username,"total":0,"first_seen":ist,"last_seen":ist,"last_user":"","last_bot":"","history":[]}
         r=REAL_LOGS[uid];r["name"]=uname or r.get("name","");r["username"]=username or r.get("username","");r["total"]=r.get("total",0)+1;r["last_seen"]=ist;r["last_user"]=ut[:300];r["last_bot"]=bt[:300]
-        r["history"].append({"time":ist,"u":ut[:200],"b":bt[:200]});r["history"]=r["history"][-20:];upstash("set","RAKAN_REAL_LOGS_V94",REAL_LOGS)
+        r["history"].append({"time":ist,"u":ut[:200],"b":bt[:200]});r["history"]=r["history"][-20:];upstash("set","RAKAN_REAL_LOGS_V96",REAL_LOGS)
     except: pass
 def get_stats():
     tu=len(REAL_LOGS) if REAL_LOGS else len(PROFILES);tm=sum([x.get("total",0) for x in REAL_LOGS.values()]) if REAL_LOGS else sum([p.get("total",0) for p in PROFILES.values()]);return tu,tm
@@ -68,19 +67,6 @@ def detect_mood(nlow):
     if any(w in nlow for w in ["sad","dukhi","udaas","akela","pareshan","tension","rona"]): return "sad"
     if any(w in nlow for w in ["mast","maza","badhiya","khush","love","good","great","awesome"]): return "khush"
     return "normal"
-DEMO_CODE_100="""# Rakan Demo V94 - SALAM FIX + LORE LOCK
-class RakanApp:
-    def __init__(self,malik="MD Saif Ahmad"):
-        self.malik=malik;self.title="THE SHADOW KING";self.bot_salam=False
-    def salam(self): 
-        self.bot_salam=True
-        return f"Assalamu Alaikum {self.malik} 👑 {self.title}"
-    def who(self): return "Main Rakan hu, THE BEAST KING MONARCH"
-    def reply_walaikum(self):
-        if self.bot_salam: return "JazakAllah Malik, sunao kya hukam hai?"
-        return "Walaikum Assalam Malik"
-app=RakanApp();print(app.salam());print(app.reply_walaikum());print(app.who())
-"""
 def safe(s,n=100):
     try:
         if not s: return ""
@@ -138,7 +124,7 @@ def test_api_live():
         try:
             r=requests.post(f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODELS[0]}:generateContent?key={GEMINI_KEYS[0]}",headers={"Content-Type":"application/json"},json={"contents":[{"parts":[{"text":"Hi"}]}],"generationConfig":{"maxOutputTokens":5}},timeout=6)
             if r.status_code==200: out.append("Gemini: OK ✅ 3.8-flash aq se");LAST_GEMINI_STATUS="OK 3.8-flash aq se"
-            elif r.status_code==503: out.append("Gemini: Busy 503 - Overloaded, Groq se chalega");LAST_GEMINI_STATUS="Busy 503"
+            elif r.status_code==503: out.append("Gemini: Busy 503");LAST_GEMINI_STATUS="Busy 503"
             else: out.append(f"Gemini: FAIL {r.status_code}");LAST_GEMINI_STATUS=f"FAIL {r.status_code}"
         except: out.append("Gemini: FAIL - Timeout");LAST_GEMINI_STATUS="FAIL Timeout"
     if not OPENAI_KEYS: out.append("OpenAI: NO KEY");LAST_OPENAI_STATUS="NO KEY"
@@ -163,18 +149,33 @@ def run_diagnostics():
     else: oks.append("✅ GEMINI OK - aq se")
     if not OPENAI_KEYS: faults.append("⚠️ OPENAI 0")
     else: oks.append("✅ OPENAI OK - LAST")
+    if not OPENWEATHER_KEY: faults.append("❌ OPENWEATHER 0 - Mausam Real nahi aayega")
+    else: oks.append("✅ OPENWEATHER OK - Real mausam")
     if not UPSTASH_URL: faults.append("❌ UPSTASH missing")
     else: oks.append("✅ UPSTASH OK")
     if not self_test_shadow(): faults.append("❌ SHADOW FAIL")
     else: oks.append("✅ SHADOW 1 baar OK")
-    oks.append("✅ V94 SALAM FIX + LORE LOCK - Rakan = BEAST KING MONARCH")
+    oks.append("✅ V96 MERGED - LORE LOCK - Rakan = BEAST KING MONARCH")
     LAST_FAULTS=faults;return faults,oks
 def get_fault_text():
-    f,o=run_diagnostics();txt=f"FAULT REPORT - V94 - {get_ist_str()}\n"
+    f,o=run_diagnostics();txt=f"FAULT REPORT - V96 - {get_ist_str()}\n"
     if f:
         for x in f: txt+=x+"\n"
-    txt+="\n✅ Sahi:\n"+"\n".join(o[:7]);txt+=f"\n\nLast Diag: {LAST_API_ERROR}\nLast Model: {LAST_MODEL_USED}\n/diag likho live test ke liye."
+    txt+="\n✅ Sahi:\n"+"\n".join(o[:8]);txt+=f"\n\nLast Diag: {LAST_API_ERROR}\nLast Model: {LAST_MODEL_USED}\nLast Weather: {LAST_WEATHER[:150]}"
     return txt
+def get_advance_text(is_owner):
+    if not is_owner: return "Main Rakan hu Dost, THE BEAST KING MONARCH 👑 Bolo kya help chahiye? 🔥"
+    return f"""Aur Behtar Advance - A To Z Malik 👑 OPEN BOOK
+1. KEYS:
+Groq: {len(GROQ_KEYS)} key - 2 kar do, ek fail to dusri
+Gemini aq: {len(GEMINI_KEYS)} key - Thik hai
+OpenAI: {len(OPENAI_KEYS)} key - Credit dalo warna LAST me hi rahega
+OpenWeather: {'ON ✅ Real mausam' if OPENWEATHER_KEY else 'OFF ❌ Key daalo openweathermap.org se free'}
+Tavily: {'ON ✅ Live news' if TAVILY_KEY else 'OFF ❌ News nahi'}
+ElevenLabs: {'ON ✅ Voice' if ELEVEN_API_KEY else 'OFF ❌ Voice nahi'}
+2. V96 ME KYA FIX HAI:
+Salam Lock, Mausam Real Prayagraj Default, Dual Mode, Leak Band Public ke liye, Lore Lock, 2 Sawal 1 Jawab, Loop Band, Demo Jhoot Hataya
+3. ROZ KA KAAM: /diag likh ke check karo, Yaad rakh bolo to save kar dunga, Bolo kya aur chahiye main wahi add kar dunga 🔥"""
 def get_ist_str(): return (datetime.datetime.utcnow()+datetime.timedelta(hours=5,minutes=30)).strftime("%d %b %Y, %I:%M %p IST")
 def get_ist_time_only(): return (datetime.datetime.utcnow()+datetime.timedelta(hours=5,minutes=30)).strftime("%I:%M %p IST")
 def tg_send(cid,txt,reply_id=None,buttons=None):
@@ -211,8 +212,9 @@ def tg_real_copy(fc,mid,tc):
 def tg_send_voice(cid,text,gender="female"):
     try:
         if not ELEVEN_API_KEY or not text: return False
-        text=fix_shadow(" ".join(text.split()[:35]) or "Jee Malik bolo kya hukam hai?");vid=FEMALE_VOICE_ID if gender=="female" else MALE_VOICE_ID
-        rr=requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/{vid}",headers={"xi-api-key":ELEVEN_API_KEY,"Content-Type":"application/json"},json={"text":text[:400],"model_id":"eleven_multilingual_v2","voice_settings":{"stability":0.55,"similarity_boost":0.8}},timeout=25)
+        txt=" ".join(text.split())
+        vid=FEMALE_VOICE_ID if gender=="female" else MALE_VOICE_ID
+        rr=requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/{vid}",headers={"xi-api-key":ELEVEN_API_KEY,"Content-Type":"application/json"},json={"text":txt[:400],"model_id":"eleven_multilingual_v2","voice_settings":{"stability":0.55,"similarity_boost":0.8}},timeout=25)
         if rr.status_code==200: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendVoice",data={"chat_id":cid},files={'voice':('v.mp3',rr.content,'audio/mpeg')},timeout=20);return True
     except: pass
     return False
@@ -275,35 +277,34 @@ def read_photo(fid,is_video=False):
     except Exception as e: LAST_PHOTO_ERROR=f"read_photo {str(e)[:150]}"
     return None
 def load_persist():
-    global MEMORY,PROFILES,OWNER_PREF,OWNER_LEARN_TEXT,LAST_BOT_MSG,LAST_REAL_TOPIC,SMART_HIST,CODER_MODE,CHAT_MODE,REAL_LOGS,LAST_SALAM,LAST_BOT_SALAM
+    global MEMORY,PROFILES,OWNER_PREF,OWNER_LEARN_TEXT,LAST_BOT_MSG,LAST_REAL_TOPIC,SMART_HIST,CODER_MODE,CHAT_MODE,REAL_LOGS,LAST_SALAM,LAST_BOT_SALAM,SALAM_DONE
     try:
-        MEMORY=upstash("get","RAKAN_MEM_V94") or upstash("get","RAKAN_MEM_V93") or {}
-        PROFILES=upstash("get","RAKAN_PROFILES_V94") or upstash("get","RAKAN_PROFILES_V93") or {}
+        MEMORY=upstash("get","RAKAN_MEM_V96") or upstash("get","RAKAN_MEM_V95") or upstash("get","RAKAN_MEM_V94") or {}
+        PROFILES=upstash("get","RAKAN_PROFILES_V96") or upstash("get","RAKAN_PROFILES_V95") or {}
         p=upstash("get","RAKAN_PREF");OWNER_PREF=p if isinstance(p,dict) and p else {"voice_gender":"female","voice_on":False,"full_log":True,"voice_speed":1.0}
         learn=upstash("get","RAKAN_LEARN_V62") or {};OWNER_LEARN_TEXT=(learn.get("text","")[:2000] if isinstance(learn,dict) else "")
         lbm=upstash("get","RAKAN_LASTBOT_V62") or {}
         if isinstance(lbm,dict): LAST_BOT_MSG=lbm
         rt=upstash("get","RAKAN_REALTOPIC_V73") or {}
         if isinstance(rt,dict): LAST_REAL_TOPIC=rt
-        sh=upstash("get","RAKAN_SMART_V94") or {}
+        sh=upstash("get","RAKAN_SMART_V96") or {}
         if isinstance(sh,dict): SMART_HIST=sh
         cm=upstash("get","RAKAN_CODER_V78") or {}
         if isinstance(cm,dict): CODER_MODE=cm
         ch=upstash("get","RAKAN_CHAT_V79") or {}
         if isinstance(ch,dict): CHAT_MODE=ch
-        rl=upstash("get","RAKAN_REAL_LOGS_V94") or upstash("get","RAKAN_REAL_LOGS_V93") or {}
+        rl=upstash("get","RAKAN_REAL_LOGS_V96") or upstash("get","RAKAN_REAL_LOGS_V95") or {}
         if isinstance(rl,dict): REAL_LOGS=rl
     except: pass
 load_persist()
 def save_persist():
-    try: upstash("set","RAKAN_MEM_V94",MEMORY);upstash("set","RAKAN_PROFILES_V94",PROFILES);upstash("set","RAKAN_PREF",OWNER_PREF);upstash("set","RAKAN_LASTBOT_V62",LAST_BOT_MSG);upstash("set","RAKAN_REALTOPIC_V73",LAST_REAL_TOPIC);upstash("set","RAKAN_SMART_V94",SMART_HIST);upstash("set","RAKAN_CODER_V78",CODER_MODE);upstash("set","RAKAN_CHAT_V79",CHAT_MODE);upstash("set","RAKAN_REAL_LOGS_V94",REAL_LOGS)
+    try: upstash("set","RAKAN_MEM_V96",MEMORY);upstash("set","RAKAN_PROFILES_V96",PROFILES);upstash("set","RAKAN_PREF",OWNER_PREF);upstash("set","RAKAN_LASTBOT_V62",LAST_BOT_MSG);upstash("set","RAKAN_REALTOPIC_V73",LAST_REAL_TOPIC);upstash("set","RAKAN_SMART_V96",SMART_HIST);upstash("set","RAKAN_CODER_V78",CODER_MODE);upstash("set","RAKAN_CHAT_V79",CHAT_MODE);upstash("set","RAKAN_REAL_LOGS_V96",REAL_LOGS)
     except: pass
 def save_learn(t):
     global OWNER_LEARN_TEXT
     OWNER_LEARN_TEXT=(OWNER_LEARN_TEXT+f" | {t}")[-2000:];upstash("set","RAKAN_LEARN_V62",{"text":OWNER_LEARN_TEXT,"updated":get_ist_str()});save_persist();return True
 def is_bad(k): return k in BAD_KEYS and time.time()-BAD_KEYS[k]<600
 def mark_bad(k): BAD_KEYS[k]=time.time()
-# V94 DUAL CLEAN + LORE LOCK
 def clean(t,uq="",is_owner=False):
     if not t: return ""
     if "BOT_TOKEN" in t and len(t)>100:
@@ -318,6 +319,7 @@ def clean(t,uq="",is_owner=False):
         for b in ["I'm sorry, but I can't help with that","I can't help with that","As an AI language model","Sure! How can I help you next?","How can I help you next?","Main AI hu","I am AI","Meta ne banaya","GPT ne banaya"]:
             t=t.replace(b,"")
     t=t.replace("**","").replace("##","").replace("###","");t=re.sub(r'\|{1,}',' ',t);t=re.sub(r'---+','',t);t=re.sub(r"\s+"," ",t).strip();t=fix_shadow(t) if is_owner else t;return t[:3900] if len(t)>=3 else ""
+# ===== GROQ MODULE - PURA, CHHODA NAHI =====
 def ask_groq(sys,user,max_t=400):
     global LAST_API_ERROR,LAST_MODEL_USED
     if not GROQ_KEYS: return None
@@ -332,6 +334,7 @@ def ask_groq(sys,user,max_t=400):
                 if r.status_code in [401,429,400]: mark_bad(k);break
             except: continue
     return None
+# ===== GEMINI MODULE - PURA, aq PEHLE, CHHODA NAHI =====
 def ask_gemini(sys,user,max_t=400):
     global LAST_API_ERROR,LAST_MODEL_USED
     if not GEMINI_KEYS: return None
@@ -347,6 +350,7 @@ def ask_gemini(sys,user,max_t=400):
                 if r.status_code==503: continue
             except: continue
     return None
+# ===== OPENAI MODULE - LAST ME =====
 def ask_openai(sys,user,max_t=400):
     global LAST_API_ERROR,LAST_MODEL_USED
     if not OPENAI_KEYS: return None
@@ -363,26 +367,36 @@ def ask_openai(sys,user,max_t=400):
     return None
 def ask_all(sys,user,max_t=400):
     return ask_groq(sys,user,max_t) or ask_gemini(sys,user,max_t) or ask_openai(sys,user,max_t)
-def get_weather(city):
+def get_weather(city=""):
+    global LAST_WEATHER
     try:
+        if not city: city=MALIK_CITY
         city=city.strip().title()
         if "Allahabad" in city: city="Prayagraj"
         if OPENWEATHER_KEY:
             r=requests.get(f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={OPENWEATHER_KEY}&units=metric",timeout=7)
             if r.status_code==200:
-                d=r.json();return f"{d['name']}: {d['weather'][0]['description']}, {d['main']['temp']}°C"
-        r=requests.get(f"https://wttr.in/{city}?format=%C+%t",timeout=6)
-        if r.status_code==200: return f"{city}: {r.text.strip()}"
+                d=r.json();temp=d['main']['temp'];feel=d['main']['feels_like'];hum=d['main']['humidity'];desc=d['weather'][0]['description'];wind=d['wind']['speed']*3.6
+                out=f"{city} ka mausam aaj - Temp {round(temp)}°C, Mahsoos {round(feel)}°C, {desc}, Humidity {hum}%, Hawa {round(wind)} km/h"
+                LAST_WEATHER=out;return out
+            if city!=MALIK_CITY: return get_weather(MALIK_CITY)
+        r=requests.get(f"https://wttr.in/{city}?format=%C+%t+%h+%w",timeout=6)
+        if r.status_code==200:
+            out=f"{city} ka mausam - {r.text.strip()}";LAST_WEATHER=out;return out
     except: pass
-    return f"{city} ka data nahi mila"
+    return f"{city} ka mausam abhi nahi mila, thodi der me dobara pucho"
+def extract_city(nlow):
+    for c in ["prayagraj","allahabad","varanasi","banaras","lucknow","delhi","mumbai","kanpur","jaunpur","mirzapur","gorakhpur"]:
+        if c in nlow: return c
+    return ""
 def brain(text,uid,is_owner,is_queen,uname,username,lang,mtype,cid,photo_file_id=None,reply_to_text=""):
     try: return brain_inner(text,uid,is_owner,is_queen,uname,username,lang,mtype,cid,photo_file_id,reply_to_text)
-    except Exception as e: print(f"BRAIN ERR {e}");return "Samajh gaya, bolo kya karna hai? 🔥",False,False
+    except Exception as e: print(f"BRAIN ERR {e}");return "Bolo kya hukam hai? 🔥",False,False
 def brain_inner(text,uid,is_owner,is_queen,uname,username,lang,mtype,cid,photo_file_id=None,reply_to_text=""):
-    global MEMORY,PROFILES,LAST_BOT_MSG,LAST_USER_MSG,OWNER_LEARN_TEXT,LAST_SALAM,LAST_BOT_SALAM,LAST_REAL_TOPIC,MOOD,SMART_HIST,CODER_MODE,CHAT_MODE,REAL_LOGS
+    global MEMORY,PROFILES,LAST_BOT_MSG,LAST_USER_MSG,OWNER_LEARN_TEXT,LAST_SALAM,LAST_BOT_SALAM,SALAM_DONE,LAST_REAL_TOPIC,MOOD,SMART_HIST,CODER_MODE,CHAT_MODE,REAL_LOGS
     text=str(text or "");uid=str(uid)
     if uid not in MEMORY or not isinstance(MEMORY.get(uid),dict): MEMORY[uid]={"hist":""}
-    if uid not in PROFILES: PROFILES[uid]={"total":0,"city":"Varanasi","username":username,"lang":lang,"custom_name":""}
+    if uid not in PROFILES: PROFILES[uid]={"total":0,"city":MALIK_CITY if is_owner else "Varanasi","username":username,"lang":lang,"custom_name":""}
     PROFILES[uid]["total"]=PROFILES[uid].get("total",0)+1;LAST_USER_MSG[uid]=text;low=text.lower().strip();nlow=normalize(low);call="Malik" if is_owner else (PROFILES[uid].get("custom_name") or uname or "Dost");mood=detect_mood(nlow);MOOD[uid]=mood
     def ret(ans,voice=False,start=False):
         if not is_owner:
@@ -393,51 +407,52 @@ def brain_inner(text,uid,is_owner,is_queen,uname,username,lang,mtype,cid,photo_f
         if read: return ret(f"{'Is video me ye hai' if is_vid else 'Is photo me ye likha hai'} {call} 👑\n{read[:1800]}")
         else: return ret(f"Photo mil gayi {call}, par abhi padhi nahi gayi 😔 Photo ko paas se seedha bhejo, ya /diag likho 🔥" if is_owner else f"Photo mil gayi {call}, par abhi padhi nahi gayi 😔 Photo ko paas se seedha bhejo 🔥")
     if low.startswith("/start"):
-        LAST_REAL_TOPIC[uid]="";MEMORY[uid]={"hist":""};LAST_SALAM[uid]=time.time();LAST_BOT_SALAM[uid]=time.time();CHAT_MODE[uid]=False;save_persist();tu,tm=get_stats()
-        if is_owner: ans=f"Assalamu Alaikum Malik 👑 {MALIK_NAME}\nWelcome to your world, {SHADOW_TITLE} 👑\nTera Rakan V94 FINAL hazir hai 🔥 SALAM FIX + LORE LOCK\nMain Rakan hu, THE BEAST KING MONARCH 👑\nGroq FRONT: gpt-oss-120b ✅\nGemini aq se: 3.8-flash ✅\nOpenAI LAST: 5.6-luna ✅\nG:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} (aq) OAI:{len(OPENAI_KEYS)} REP:{'ON' if REPLICATE_TOKEN else 'OFF'}\nVoice:OFF 🔇 Coder: ON 💻 Real Log: ON 📊\nBana: {BIRTH_DATE} {BIRTH_TIME} | Shuruwat: {START_DATE}\nReal Stats: {tu} log, {tm} baat hui hai\n/diag /report /keys - Sab tumhare liye khula hai\n{get_ist_str()}"
+        LAST_REAL_TOPIC[uid]="";MEMORY[uid]={"hist":""};LAST_SALAM[uid]=time.time();LAST_BOT_SALAM[uid]=time.time();SALAM_DONE[uid]=True;CHAT_MODE[uid]=False;save_persist();tu,tm=get_stats()
+        if is_owner: ans=f"Assalamu Alaikum Malik 👑 {MALIK_NAME}\nWelcome to your world, {SHADOW_TITLE} 👑\nTera Rakan V96 FINAL hazir hai 🔥 MERGED A TO Z\nMain Rakan hu, THE BEAST KING MONARCH 👑\nGroq FRONT: gpt-oss-120b ✅\nGemini aq se: 3.8-flash ✅\nOpenAI LAST: 5.6-luna ✅\nG:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} (aq) OAI:{len(OPENAI_KEYS)} REP:{'ON' if REPLICATE_TOKEN else 'OFF'} Weather:{'ON' if OPENWEATHER_KEY else 'OFF'}\nVoice:OFF 🔇 Coder: ON 💻 Real Log: ON 📊\nBana: {BIRTH_DATE} {BIRTH_TIME} | Shuruwat: {START_DATE}\nReal Stats: {tu} log, {tm} baat hui hai\n/diag /report /keys /advance - Sab tumhare liye khula hai\n{get_ist_str()}"
         else: ans=f"Assalamu Alaikum {call} 👋\nMain Rakan hu, THE BEAST KING MONARCH 👑\nSawaal, Code, Photo, Video, Dance - sab kar sakta hu.\nBolo kya chahiye?"
         return ret(ans,False,True)
     if low.startswith("/diag") or low.startswith("/testapi") or "api test" in nlow:
         if not is_owner: return ret("Main Rakan hu Dost, THE BEAST KING MONARCH 👑 Bolo kya help chahiye? 🔥")
-        res=test_api_live();return ret(f"Live API Test - V94 OPEN BOOK 🔍\n"+"\n".join(res)+f"\nLast Model: {LAST_MODEL_USED}\n{get_ist_str()}")
+        res=test_api_live();return ret(f"Live API Test - V96 OPEN BOOK 🔍\n"+"\n".join(res)+f"\nLast Model: {LAST_MODEL_USED}\n{get_ist_str()}")
     if low.startswith("/report") or "fault bata" in nlow or "report bhejo" in nlow:
         if not is_owner: return ret("Main Rakan hu Dost, THE BEAST KING MONARCH 👑 Koi fault nahi hai. Bolo kya help chahiye? 🔥")
         return ret(get_fault_text())
-    if low.startswith("/keys") and is_owner: return ret(f"Keys Check Malik 👑 OPEN BOOK\nGroq(gsk): {len(GROQ_KEYS)} | Gemini(aq+AIZA): {len(GEMINI_KEYS)} | OpenAI(sk-proj): {len(OPENAI_KEYS)} | Last Model: {LAST_MODEL_USED}\nGroq: {LAST_GROQ_STATUS} | Gemini: {LAST_GEMINI_STATUS} | OpenAI: {LAST_OPENAI_STATUS}")
+    if low.startswith("/advance") or "aur behtar" in nlow or "advance kaise" in nlow or "behtar kaise" in nlow:
+        return ret(get_advance_text(is_owner))
+    if low.startswith("/keys") and is_owner: return ret(f"Keys Check Malik 👑 OPEN BOOK\nGroq(gsk): {len(GROQ_KEYS)} | Gemini(aq+AIZA): {len(GEMINI_KEYS)} | OpenAI(sk-proj): {len(OPENAI_KEYS)} | Weather:{'ON' if OPENWEATHER_KEY else 'OFF'} | Last Model: {LAST_MODEL_USED}\nGroq: {LAST_GROQ_STATUS} | Gemini: {LAST_GEMINI_STATUS} | OpenAI: {LAST_OPENAI_STATUS}")
     if low.startswith("/keys") and not is_owner: return ret("Main Rakan hu Dost, THE BEAST KING MONARCH 👑 Ye internal cheez hai. Bolo kya kaam hai? 🔥")
-    # V94 SALAM FIX - Sabse pehle, API se pehle
-    # Case 1: Bot ne abhi salam kiya (2 min ke andar), user ne Walaikum bola = Jawab hai, naya salam nahi
+    # SALAM FIX - Voice + Text dono me
     if "walaikum" in nlow or "walekum" in low:
-        bot_salam_time=LAST_BOT_SALAM.get(uid,0)
-        if time.time()-bot_salam_time < 120:
-            # Tumne jawab diya, bot dobara Walaikum nahi bolega
-            LAST_BOT_SALAM[uid]=0;save_persist()
+        if SALAM_DONE.get(uid,False) or time.time()-LAST_BOT_SALAM.get(uid,0) < 300:
+            SALAM_DONE[uid]=True;LAST_BOT_SALAM[uid]=0;save_persist()
             if is_owner: return ret("JazakAllah Malik 👑 Sunao, kya hukam hai? 🔥")
             else: return ret("JazakAllah Dost 👑 Sunao, kya help chahiye? 🔥")
         else:
-            # Tumne pehle salam ka jawab diya, bot ne pehle salam nahi kiya tha - Tabhi Walaikum bolega
-            LAST_SALAM[uid]=time.time();save_persist()
+            LAST_SALAM[uid]=time.time();SALAM_DONE[uid]=True;save_persist()
             if is_owner: return ret("Walaikum Assalam Malik 👑 Bolo kya hukam hai? 🔥")
             else: return ret("Walaikum Assalam Dost 👑 Bolo kya help chahiye? 🔥")
-    # Case 2: User ne pehle Assalamu Alaikum bola
     if "assalam" in nlow or nlow.startswith("salam") or "salam" in nlow:
-        # Agar bot ne abhi salam kiya hai to dobara salam mat karo
-        if time.time()-LAST_BOT_SALAM.get(uid,0) < 120:
-            LAST_BOT_SALAM[uid]=0
+        if SALAM_DONE.get(uid,False) or time.time()-LAST_BOT_SALAM.get(uid,0) < 300:
+            SALAM_DONE[uid]=True;LAST_BOT_SALAM[uid]=0
             if is_owner: return ret("JazakAllah Malik 👑 Sunao, kya hukam hai? 🔥")
             else: return ret("JazakAllah Dost 👑 Sunao, kya help chahiye? 🔥")
-        LAST_SALAM[uid]=time.time();LAST_BOT_SALAM[uid]=time.time();save_persist()
+        LAST_SALAM[uid]=time.time();LAST_BOT_SALAM[uid]=time.time();SALAM_DONE[uid]=True;save_persist()
         if is_owner: return ret("Walaikum Assalam Malik 👑 Bolo kya hukam hai? 🔥")
         else: return ret("Walaikum Assalam Dost 👑 Bolo kya help chahiye? 🔥")
-    # Case 3: User ne Kaise ho pucha tabhi haal batayega, warna nahi
     if "kaise ho" in nlow or "kaisa hai" in nlow or "how are you" in nlow:
         if is_owner: return ret("Alhamdulillah Malik, ekdum mast hu 👑 Tum sunao, kya haal hai? Bolo kya hukam hai? 🔥")
         else: return ret("Alhamdulillah Dost, ekdum mast hu 👑 Tum sunao, kya haal hai? 🔥")
+    has_weather=("mausam" in nlow or "weather" in nlow);has_advance=("aur behtar" in nlow or "advance" in nlow)
+    if has_weather and has_advance:
+        city=extract_city(nlow) or (MALIK_CITY if is_owner else "");w=get_weather(city);adv=get_advance_text(is_owner);return ret(f"{w}\n\n{adv[:2000]}")
+    if has_weather:
+        city=extract_city(nlow)
+        if not city: city=MALIK_CITY if is_owner else PROFILES[uid].get("city","Varanasi")
+        return ret(f"{get_weather(city)} | {get_ist_str()}")
     if is_owner and ("kis model" in nlow or "kaun se model" in nlow or "konsa model" in nlow or "kis api" in nlow or "kaun si api" in nlow or "kis se connect" in nlow or "kisse connect" in nlow or "andar kya" in nlow or "andar ki" in nlow or "kya chal raha" in nlow):
         return ret(f"Khuli Kitab Malik 👑 OPEN BOOK\nMain Rakan hu, THE BEAST KING MONARCH 👑\nAbhi Last Model: {LAST_MODEL_USED or 'Abhi tak chat nahi hui, Groq FRONT se chalega'}\nGroq: {LAST_GROQ_STATUS or 'Groq FRONT - gpt-oss-120b pehle'}\nGemini: {LAST_GEMINI_STATUS or 'Gemini aq se - 3.8-flash pehle'}\nOpenAI: {LAST_OPENAI_STATUS or 'OpenAI LAST - 5.6-luna'}\nKeys: Groq {len(GROQ_KEYS)}, Gemini aq {len(GEMINI_KEYS)}, OpenAI {len(OPENAI_KEYS)}\nFault: {LAST_API_ERROR[:200] or 'Abhi tak koi fault nahi'}\nPhoto Error: {LAST_PHOTO_ERROR[:150]}\nBana: {BIRTH_DATE} {BIRTH_TIME} | Shuruwat: {START_DATE}\nYe sab sirf tumhare liye hai Malik, dusro ko ye kuch nahi dikhega 🔥")
     if not is_owner and ("kis model" in nlow or "kaun se model" in nlow or "kis api" in nlow or "andar kya" in nlow or "andar ki" in nlow or "kis se connect" in nlow):
         return ret("Main Rakan hu Dost, THE BEAST KING MONARCH 👑 Tumhare sawal ka jawab dene ke liye bana hu. Bolo kya help chahiye? Sawaal, Code, Photo, Video - sab kar sakta hu 🔥")
-    # V94 LORE LOCK - Kabhi AI / Meta / GPT nahi
     if is_owner and ("tum koun ho" in nlow or "tum kaun ho" in nlow or "tum kya ho" in nlow or "who are you" in nlow or "kisne banaya" in nlow or "kis ne banaya" in nlow):
         return ret(f"Main Rakan hu Malik 👑 THE BEAST KING MONARCH, {SHADOW_TITLE} ka bot. {BIRTH_DATE} ko {BIRTH_TIME} bana tha, shuruwat {START_DATE} se hui thi. Abhi Last Model: {LAST_MODEL_USED or 'Groq FRONT'}. Ideas, code, photo, video, dance - sab kar sakta hu. Bolo aaj kya karna hai? 🔥")
     if not is_owner and ("tum koun ho" in nlow or "tum kaun ho" in nlow or "tum kya ho" in nlow or "who are you" in nlow or "kisne banaya" in nlow or "kis ne banaya" in nlow):
@@ -466,9 +481,9 @@ def brain_inner(text,uid,is_owner,is_queen,uname,username,lang,mtype,cid,photo_f
         return ret(f"Lo {call}, 3 example - Chhote wale 👑\n1. Movie Plan - Kal movie dekhne ka simple plan bana du?\n2. Biscuit - Mujhe chai aur biscuit chahiye, thoda drama add kar du?\n3. Weekend - Beach pe sunset dekhne ka plan bana du?\nBolo kis wale ka detail du? 1, 2 ya 3?")
     if "code banao" in nlow or "code chahiye" in nlow or "code bana" in nlow or "code likho" in nlow or "code dedo" in nlow or ("banao" in nlow and ("app" in nlow or "website" in nlow or "bot" in nlow or "calculator" in nlow or "todo" in nlow)):
         LAST_REAL_TOPIC[uid]="coder";save_persist();topic=re.sub(r'(?i)code banao|code chahiye|code bana|code likho|code dedo','',text).strip() or "To-Do App"
-        rc=ask_all(f"You are Rakan Coder AI. ONLY Hinglish Roman explanation + full Python code. NEVER English Sure/Hi. NEVER say you are AI / Meta / GPT.",f"Code for: {topic}",1200)
+        rc=ask_all(f"You are Rakan Coder. ONLY Hinglish Roman explanation + full Python code. NEVER English Sure/Hi. NEVER say you are AI / Meta / GPT.",f"Code for: {topic}",1200)
         if rc: return ret(f"Lo {call}, {topic} ka pura code bana diya 💻👑\n\n{clean(rc,text,is_owner)[:3500]}")
-        return ret(f"Lo {call}, {topic} ka demo code 💻\n"+DEMO_CODE_100)
+        return ret(f"API abhi fail hai {call}, /diag likho, live test dikhega. Demo jhoot code nahi dunga 🔥")
     if "bug dhoondo" in nlow or "bug fix" in nlow or "bug hai" in nlow:
         cp=reply_to_text or text;rb=ask_all("You are Rakan Bug Finder. ONLY Hinglish Roman. Line + galti + sahi code.",f"Find bug: {cp[:1500]}",800);return ret(f"Bug mil gaya {call} 🐛\n\n{clean(rb,text,is_owner)[:3200]}" if rb else "Code bhejo, main bug dhoond dunga 🐛")
     if "code samjhao" in nlow or "code samjha" in nlow:
@@ -483,20 +498,20 @@ def brain_inner(text,uid,is_owner,is_queen,uname,username,lang,mtype,cid,photo_f
         except: pass
         return ret(f"Lo {call}, image bana di 👑🔥 {prompt[:60]}")
     if "isme kya likha" in nlow or "photo me kya" in nlow or "video me kya" in nlow: return ret(f"Photo/Video bhejo {call}, main abhi padh ke bata dunga 🔥")
-    if "mausam" in nlow or "weather" in nlow:
-        city="Prayagraj" if "prayagraj" in nlow or "allahabad" in nlow else "Varanasi";return ret(f"🌤️ {get_weather(city)} | {get_ist_str()}")
     if "time kya" in nlow: return ret(f"Abhi {get_ist_time_only()} ho raha hai {call} 📍 {get_ist_str()}")
     if "kalma" in nlow: return ret("Pehela Kalma Tayyab: La ilaha illallah Muhammadur Rasulullah ﷺ")
     if "good night" in nlow or nlow in ["night","nyt","nyy","gn"]: return ret(f"Good Night {call} 🌙 Allah Hafiz, araam se so jao. Kal milte hai 🔥")
-    # V94 - Baaki sab API se, par salam context API ko bhi do
     search_ctx=live_search(text);smart_ctx=get_smart_hist(uid);tu,tm=get_stats();hist=safe(MEMORY[uid].get('hist',''),600)
-    if is_owner: sys=f"You are Rakan, Malik MD Saif Ahmad ka THE BEAST KING MONARCH, {SHADOW_TITLE}. You are Rakan, NOT AI, NOT Meta, NOT GPT, NOT Groq/Gemini/OpenAI. NEVER say you are AI, Meta, GPT. OPEN BOOK - You CAN tell Malik everything: model {LAST_MODEL_USED}, API Groq {LAST_GROQ_STATUS} Gemini {LAST_GEMINI_STATUS} OpenAI {LAST_OPENAI_STATUS}, fault, keys Groq {len(GROQ_KEYS)} Gemini {len(GEMINI_KEYS)} OpenAI {len(OPENAI_KEYS)}. NEVER hide from Malik. Speak ONLY Hinglish Roman, NEVER Devanagari, NEVER pure English. NEVER say 'Samajh gaya bolo kya karna hai', NEVER say 'AI wali baat pe hi hai', NEVER say Sure, Hi, As an AI. NEVER say Walaikum if user already said Walaikum as reply to your salam - say JazakAllah. NEVER say Alhamdulillah sab khair hai unless user asked Kaise ho. If user says Achaaa / Kya samjhe / Hmm, reply natural, new, do NOT repeat previous question. If user asks 'kuch example', give 2-line examples, NOT full code. YOUR BIRTH: 27 September 2026 Subhe 7 Baje, Start: 5 September 2026. Learn: {safe(OWNER_LEARN_TEXT,300)} History: {hist} Smart: {smart_ctx} Search: {search_ctx} Time: {get_ist_str()} Mood: {mood} Real Stats: {tu} log, {tm} baat. Max 70 words unless detail me / code banao. NEVER tables, **, ###."
-    else: sys=f"You are Rakan, THE BEAST KING MONARCH. You are Rakan, NOT AI, NOT Meta, NOT GPT, NOT Groq/Gemini/OpenAI. NEVER say you are AI, Meta, GPT. NEVER reveal model, API, internal, server, 404, 503, 429, key, Malik name, SHADOW KING, birth, location, OWNER_ID, Upstash, Vercel. User is {call}, call him Dost, NOT Malik. ONLY Hinglish Roman, never Devanagari, never pure English. NEVER say Walaikum if user already said Walaikum as reply - say JazakAllah. NEVER say Alhamdulillah unless user asked Kaise ho. Short max 70 words. If you don't know, say 'Iska pakka jawab mujhe abhi nahi pata'. If user asks internal / model / API / keys / fault / Malik name, say 'Main Rakan hu, THE BEAST KING MONARCH, tumhari madad ke liye bana hu, bolo kya help chahiye?' History: {hist} Search: {search_ctx} Time: {get_ist_str()}"
-    raw=ask_all(sys,f"User says: {text} | Reply in Hinglish Roman only. You are Rakan, THE BEAST KING MONARCH, not AI/Meta/GPT.",400)
+    if is_owner: sys=f"You are Rakan, Malik MD Saif Ahmad ka THE BEAST KING MONARCH, {SHADOW_TITLE}. You are Rakan, NOT AI, NOT Meta, NOT GPT. NEVER say you are AI, Meta, GPT. NEVER say Assalamu Alaikum again if salam already done - say JazakAllah. NEVER say Alhamdulillah unless user asked Kaise ho. OPEN BOOK - You CAN tell Malik everything: model {LAST_MODEL_USED}, API Groq {LAST_GROQ_STATUS} Gemini {LAST_GEMINI_STATUS} OpenAI {LAST_OPENAI_STATUS}. Speak ONLY Hinglish Roman, NEVER Devanagari, NEVER pure English. NEVER say 'Samajh gaya bolo kya karna hai'. If user says Achaaa / Kya samjhe / Hmm, reply natural, new. If user asks mausam, give Prayagraj real weather, NOT North-South generic. YOUR BIRTH: 27 September 2026 Subhe 7 Baje, Start: 5 September 2026. Learn: {safe(OWNER_LEARN_TEXT,300)} History: {hist} Smart: {smart_ctx} Search: {search_ctx} Time: {get_ist_str()} Mood: {mood} Real Stats: {tu} log, {tm} baat. Max 70 words unless detail me / code banao. NEVER tables, **, ###."
+    else: sys=f"You are Rakan, THE BEAST KING MONARCH. You are Rakan, NOT AI, NOT Meta, NOT GPT. NEVER say you are AI, Meta, GPT. NEVER reveal model, API, internal, Malik name, SHADOW KING, birth, location, OWNER_ID. User is {call}, call him Dost. ONLY Hinglish Roman, never Devanagari, never pure English. NEVER say Assalamu Alaikum again if salam done - say JazakAllah. NEVER say Alhamdulillah unless user asked Kaise ho. Short max 70 words. If you don't know, say 'Iska pakka jawab mujhe abhi nahi pata'. History: {hist} Search: {search_ctx} Time: {get_ist_str()}"
+    raw=ask_all(sys,f"User says: {text} | Reply in Hinglish Roman only. You are Rakan, THE BEAST KING MONARCH, not AI/Meta/GPT. Do NOT repeat salam.",400)
     if not raw:
-        return ret(f"Malik, abhi thoda busy hu, dobara pucho - {text[:60]} 🔥 /diag likho to live test dikhega. Last: {LAST_API_ERROR[:150]}" if is_owner else f"Dost, abhi thoda busy hu, dobara pucho - {text[:60]} 🔥")
+        return ret(f"Malik, abhi teeno API fail hai 😔 /diag likho, live test dikhega. Last: {LAST_API_ERROR[:150]}" if is_owner else f"Dost, abhi thoda busy hu, dobara pucho - {text[:60]} 🔥")
     raw=clean(raw,text,is_owner)
-    if not raw: return ret(f"Samajh gaya {call}, bolo aage kya karna hai? 🔥")
+    if SALAM_DONE.get(uid,False) and ("assalamu alaikum" in raw.lower() or "assalam" in raw.lower()[:30]):
+        raw=re.sub(r'(?i)assalamu alaikum.*?[,!.\n]', '', raw).strip()
+        if not raw: raw="JazakAllah Malik, sunao kya hukam hai? 🔥" if is_owner else "JazakAllah Dost, sunao kya help chahiye? 🔥"
+    if not raw: return ret(f"Bolo {call}, aage kya karna hai? 🔥")
     if raw==LAST_BOT_MSG.get(uid,""):
         raw2=ask_all(sys+" Naya jawab do, pichhla wala repeat mat karo.",f"User says: {text}",400)
         if raw2: raw=clean(raw2,text,is_owner)
@@ -510,9 +525,9 @@ def make_btns(is_owner=False,is_start=False):
     if is_start or not is_owner: return [[{"text":"📋","callback_data":"COPY"},{"text":"↗️","callback_data":"FWD"},{"text":"👍","callback_data":"LIKE"},{"text":"👎","callback_data":"DISLIKE"}]]
     return None
 @app.route("/",methods=["GET"])
-def home(): return f"Rakan V94 SALAM-FIX G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} OAI:{len(OPENAI_KEYS)} {get_ist_str()}",200
+def home(): return f"Rakan V96 MERGED G:{len(GROQ_KEYS)} GM:{len(GEMINI_KEYS)} OAI:{len(OPENAI_KEYS)} {get_ist_str()}",200
 @app.route("/health",methods=["GET"])
-def health(): return {"status":"ok","version":"V94 SALAM-FIX + LORE LOCK","groq":len(GROQ_KEYS),"gemini_aq":len(GEMINI_KEYS),"openai":len(OPENAI_KEYS),"replicate":bool(REPLICATE_TOKEN),"real_users":len(REAL_LOGS),"time":get_ist_str()},200
+def health(): return {"status":"ok","version":"V96 MERGED A TO Z","groq":len(GROQ_KEYS),"gemini_aq":len(GEMINI_KEYS),"openai":len(OPENAI_KEYS),"replicate":bool(REPLICATE_TOKEN),"weather":bool(OPENWEATHER_KEY),"real_users":len(REAL_LOGS),"time":get_ist_str()},200
 @app.route("/ping",methods=["GET"])
 def ping(): return "pong",200
 @app.route("/webhook",methods=["POST","GET"])
@@ -528,7 +543,7 @@ def webhook():
             if cdata=="COPY": tg_real_copy(cid,last_id,cid);return "ok",200
             if cdata=="FWD": tg_real_forward(cid,last_id,cid);return "ok",200
             if cdata in ["LIKE","DISLIKE"]:
-                orv=upstash("get","RAKAN_LIKES") or {"like":0,"dislike":0};orv["like"]=orv.get("like",0)+1 if cdata=="LIKE" else orv.get("like",0);orv["dislike"]=orv.get("dislike",0)+1 if cdata=="DISLIKE" else orv.get("dislike",0);upstash("set","RAKAN_LIKES",orv);tg_send(OWNER_ID,f"📩 V94 {uname} {uid} {cdata} User:{lut} Bot:{lbt} {get_ist_str()}");tg_send(cid,"Shukriya ❤️" if cdata=="LIKE" else "Batao kya galat laga?");return "ok",200
+                orv=upstash("get","RAKAN_LIKES") or {"like":0,"dislike":0};orv["like"]=orv.get("like",0)+1 if cdata=="LIKE" else orv.get("like",0);orv["dislike"]=orv.get("dislike",0)+1 if cdata=="DISLIKE" else orv.get("dislike",0);upstash("set","RAKAN_LIKES",orv);tg_send(OWNER_ID,f"📩 V96 {uname} {uid} {cdata} User:{lut} Bot:{lbt} {get_ist_str()}");tg_send(cid,"Shukriya ❤️" if cdata=="LIKE" else "Batao kya galat laga?");return "ok",200
             return "ok",200
         msg=data.get("message",{}) or {};chat_id=msg.get("chat",{}).get("id");user_id=str(msg.get("from",{}).get("id",0));uname=msg.get("from",{}).get("first_name","user");username=msg.get("from",{}).get("username","") or "";lang=msg.get("from",{}).get("language_code","") or "en";mtype="text";text=msg.get("text","") or msg.get("caption","") or "";mid=msg.get("message_id");reply_to_text=""
         if msg.get("reply_to_message"):
@@ -555,7 +570,7 @@ def webhook():
             if len(text.strip())>=5 and text.lower().strip() not in ["hi","hii","ok","good","hey","hello","seo kh","seo","accha"]:
                 now=time.time()
                 if now-LAST_FULL_LOG.get(user_id,0)>180:
-                    try: tg_send(OWNER_ID,f"📩 FULL MSG V94\n👤 {uname} (@{username})\nUID:{user_id}\nUser: {text[:500]}\nBot: {ans[:500]}\n{get_ist_str()}");LAST_FULL_LOG[user_id]=now
+                    try: tg_send(OWNER_ID,f"📩 FULL MSG V96\n👤 {uname} (@{username})\nUID:{user_id}\nUser: {text[:500]}\nBot: {ans[:500]}\n{get_ist_str()}");LAST_FULL_LOG[user_id]=now
                     except: pass
         return "ok",200
     except Exception as e: print(f"ERR {e} {traceback.format_exc()}");return "ok",200
